@@ -27,7 +27,11 @@ export default function Home() {
     const isDark = localStorage.getItem("darkMode") === "true";
     setDarkMode(isDark);
   }, []);
-
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      import("./serviceWorkerRegistration").then((reg) => reg.register());
+    }
+  }, []);
   const toggleDarkMode = () => {
     const newMode = !darkMode;
     setDarkMode(newMode);
@@ -311,7 +315,7 @@ export default function Home() {
         className={`max-w-6xl mx-auto lg:p-6 ${darkMode ? "text-white" : ""}`}
       >
         <h1
-          className={`lg:block ${
+          className={`lg:block mt-12 ${
             !startGame ? "block" : "hidden"
           } text-5xl font-bold tracking-tighter pb-8 text-center ${
             darkMode ? "text-white" : "text-black"
