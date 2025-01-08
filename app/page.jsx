@@ -1,29 +1,39 @@
 "use client";
-import { useState, useEffect } from "react";
+
+import { toPng } from "html-to-image";
+import { useState, useEffect, useRef } from "react";
+import { X, Trophy, Eye, EyeOff, RotateCcw, Share2 } from "lucide-react";
 
 export default function Home() {
+  const scoreboardRef = useRef(null);
   const [players, setPlayers] = useState([
-    { id: 1, name: "", points: 0, isWinner: false, jokerSeen: false },
+    {
+      id: 1,
+      name: "",
+      points: 0,
+      isWinner: false,
+      jokerSeen: false,
+      roundPoints: 0,
+      inputRef: useRef(null),
+    },
   ]);
   const [startGame, setStartGame] = useState(false);
   const [games, setGames] = useState([]);
   const [error, setError] = useState("");
   const [darkMode, setDarkMode] = useState(false);
+  const [selectedWinner, setSelectedWinner] = useState(null);
 
-  // Add useEffect to check system preference and localStorage
   useEffect(() => {
     const isDark = localStorage.getItem("darkMode") === "true";
     setDarkMode(isDark);
   }, []);
 
-  // Add toggle function
   const toggleDarkMode = () => {
     const newMode = !darkMode;
     setDarkMode(newMode);
     localStorage.setItem("darkMode", newMode);
   };
 
-  // Add at the top with other useEffect hooks
   useEffect(() => {
     const savedGames = localStorage.getItem("marriageGameHistory");
     const savedPlayers = localStorage.getItem("marriageGamePlayers");
@@ -39,30 +49,86 @@ export default function Home() {
       setStartGame(JSON.parse(savedGameState));
     }
   }, []);
+  const shareScoreboard = async () => {
+    if (!scoreboardRef.current) return;
 
-  // Add a reset function for the entire game
+    try {
+      const dataUrl = await toPng(scoreboardRef.current, {
+        quality: 1.0,
+        backgroundColor: "white",
+      });
+
+      const blob = await (await fetch(dataUrl)).blob();
+
+      // Check if the Web Share API is available and supports sharing files
+      if (navigator.share) {
+        try {
+          // Try sharing with file first
+          const file = new File([blob], "scoreboard.png", {
+            type: "image/png",
+          });
+          await navigator.share({
+            title: "Marriage Card Game Scores",
+            files: [file],
+          });
+        } catch (error) {
+          // If file sharing fails, fallback to sharing the data URL
+          await navigator.share({
+            title: "Marriage Card Game Scores",
+            text: "Marriage Card Game Scoreboard",
+            url: dataUrl,
+          });
+        }
+      } else {
+        // Fallback for browsers that don't support sharing
+        const link = document.createElement("a");
+        link.download = "scoreboard.png";
+        link.href = dataUrl;
+        link.click();
+      }
+    } catch (error) {
+      console.error("Error sharing:", error);
+      setError("Failed to share scoreboard");
+      setTimeout(() => setError(""), 2000);
+    }
+  };
+
   const resetGame = () => {
     localStorage.removeItem("marriageGamePlayers");
     localStorage.removeItem("marriageGameHistory");
     localStorage.removeItem("marriageGameState");
     setPlayers([
-      { id: 1, name: "", points: 0, isWinner: false, jokerSeen: false },
+      {
+        id: 1,
+        name: "",
+        points: 0,
+        isWinner: false,
+        jokerSeen: false,
+        roundPoints: 0,
+      },
     ]);
     setGames([]);
     setStartGame(false);
   };
+
   const addPlayer = () => {
     if (players.length < 5) {
+      const newPlayerId = players.length + 1;
       setPlayers([
         ...players,
         {
-          id: players.length + 1,
+          id: newPlayerId,
           name: "",
           points: 0,
           isWinner: false,
           jokerSeen: false,
+          roundPoints: 0,
         },
       ]);
+      // Focus the new player's input after a short delay
+      setTimeout(() => {
+        document.querySelector(`#player${newPlayerId}`)?.focus();
+      }, 100);
     }
   };
 
@@ -82,34 +148,62 @@ export default function Home() {
 
   const handleJokerSeen = (playerId) => {
     setPlayers(
-      players.map((p) =>
-        p.id === playerId ? { ...p, jokerSeen: !p.jokerSeen } : p
-      )
+      players.map((p) => {
+        if (p.id === playerId) {
+          const newJokerSeen = !p.jokerSeen;
+          if (newJokerSeen) {
+            setTimeout(() => {
+              document.querySelector(`#points-input-${playerId}`)?.focus();
+            }, 100);
+          }
+          return { ...p, jokerSeen: newJokerSeen };
+        }
+        return p;
+      })
     );
   };
 
-  const handleWinner = (playerId) => {
+  const handleWinnerSelect = (playerId) => {
     const playerToWin = players.find((p) => p.id === playerId);
     if (!playerToWin.jokerSeen) {
-      setError("Player must see joker before winning!");
+      setError("Player must see joker before being selected as winner!");
       return;
     }
 
+    // If clicking the same player that's already selected, deselect them
+    if (selectedWinner === playerId) {
+      setSelectedWinner(null);
+    } else {
+      setSelectedWinner(playerId);
+    }
+    setError("");
+  };
+  const submitScores = () => {
+    if (!selectedWinner) {
+      setError("Please select a winner first!");
+      return;
+    }
+
+    const playersWithRoundPoints = players.map((player) => ({
+      ...player,
+      roundPoints: player.points,
+    }));
+
     // Calculate total points of the game (excluding unseen players)
     const totalGamePoints =
-      players.reduce((sum, player) => {
+      playersWithRoundPoints.reduce((sum, player) => {
         return player.jokerSeen ? sum + player.points : sum;
       }, 0) + 3; // Add extra 3 points to total
 
-    const numPlayers = players.length;
+    const numPlayers = playersWithRoundPoints.length;
 
-    const updatedPlayers = players.map((p) => {
-      if (p.id === playerId) {
+    const updatedPlayers = playersWithRoundPoints.map((p) => {
+      if (p.id === selectedWinner) {
         // Winner calculation
-        // (current points × number of players) - total game points + 10 from unseen + (3 × number of seen players) + 3 for winning
-        const seenPlayersCount = players.filter(
-          (player) => player.jokerSeen && player.id !== playerId
+        const seenPlayersCount = playersWithRoundPoints.filter(
+          (player) => player.jokerSeen && player.id !== selectedWinner
         ).length;
+
         const winnerPoints =
           p.points * numPlayers -
           totalGamePoints +
@@ -143,7 +237,7 @@ export default function Home() {
 
     setPlayers(updatedPlayers);
 
-    // Save game history
+    // Save game history with roundPoints
     const updatedGames = [
       ...games,
       {
@@ -155,7 +249,14 @@ export default function Home() {
           }),
           {}
         ),
-        winner: playerId,
+        roundPoints: updatedPlayers.reduce(
+          (acc, player) => ({
+            ...acc,
+            [player.id]: player.roundPoints,
+          }),
+          {}
+        ),
+        winner: selectedWinner,
       },
     ];
 
@@ -170,49 +271,49 @@ export default function Home() {
           points: 0,
           isWinner: false,
           jokerSeen: false,
+          roundPoints: 0,
         }))
       );
+      setSelectedWinner(null);
       setError("");
     }, 1500);
   };
 
   const deleteGame = (gameNoToDelete) => {
-    // Filter out the game to delete
-    const updatedGames = games.filter((game) => game.gameNo !== gameNoToDelete);
+    const isConfirmed = window.confirm(
+      `Are you sure you want to delete round ${gameNoToDelete}?`
+    );
 
-    // Renumber the remaining games
-    const reorderedGames = updatedGames.map((game, index) => ({
-      ...game,
-      gameNo: index + 1,
-    }));
-
-    // Update state and localStorage
-    setGames(reorderedGames);
-    localStorage.setItem("marriageGameHistory", JSON.stringify(reorderedGames));
+    if (isConfirmed) {
+      const updatedGames = games.filter(
+        (game) => game.gameNo !== gameNoToDelete
+      );
+      const reorderedGames = updatedGames.map((game, index) => ({
+        ...game,
+        gameNo: index + 1,
+      }));
+      setGames(reorderedGames);
+      localStorage.setItem(
+        "marriageGameHistory",
+        JSON.stringify(reorderedGames)
+      );
+    }
   };
-
   return (
-    // Add at the top level div
     <div
-      className={`min-h-screen ${
+      className={` ${
         darkMode
           ? "bg-gray-900 text-white"
           : "lg:bg-gradient-to-br lg:from-blue-50 lg:to-indigo-50"
-      } py-8`}
+      } lg:pt-8`}
     >
-      {/* Add dark mode toggle button */}
-      {/* <button
-        onClick={toggleDarkMode}
-        className="fixed top-4 right-4 p-2 rounded-full bg-opacity-20 backdrop-blur-sm"
-      >
-        {darkMode ? "☀️" : "🌙"}
-      </button> */}
-
       <div
         className={`max-w-6xl mx-auto lg:p-6 ${darkMode ? "text-white" : ""}`}
       >
         <h1
-          className={`text-5xl font-bold tracking-tighter pb-8 text-center ${
+          className={`lg:block ${
+            !startGame ? "block" : "hidden"
+          } text-5xl font-bold tracking-tighter pb-8 text-center ${
             darkMode ? "text-white" : "text-black"
           }`}
         >
@@ -243,7 +344,7 @@ export default function Home() {
                       onClick={() => removePlayer(player.id)}
                       className="px-3 py-1 text-red-600 hover:bg-red-50 rounded"
                     >
-                      ×
+                      <X size={20} />
                     </button>
                   )}
                 </div>
@@ -278,8 +379,7 @@ export default function Home() {
             </div>
           </div>
         ) : (
-          <div className="space-y-6 bg-white lg:p-6 max-lg:py-2 rounded-xl lg:shadow-sm">
-            {/* Error message with improved styling */}
+          <div className="flex flex-col justify-between bg-white lg:p-6 max-lg:pt-2 rounded-xl lg:shadow-sm">
             {error && (
               <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg">
                 <div className="flex">
@@ -291,18 +391,11 @@ export default function Home() {
               </div>
             )}
             <div className="space-y-4 max-lg:p-4">
-              {" "}
-              {/* Reduced spacing from 6 to 4 */}
-              {error && (
-                <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded text-sm">
-                  {error}
-                </div>
-              )}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+              <div className="flex flex-col gap-2">
                 {players.map((player) => (
                   <div
                     key={player.id}
-                    className={`p-4 rounded-xl border-1 shadow-md border-dotted ${
+                    className={`p-3 flex justify-between items-center rounded-xl md:border-1 md:shadow-md border-dotted ${
                       darkMode
                         ? player.isWinner
                           ? "border-green-500 bg-green-900 bg-opacity-20"
@@ -316,42 +409,45 @@ export default function Home() {
                         : "border-gray-200 hover:border-gray-300"
                     }`}
                   >
-                    <div className="font-semibold mb-2 text-base">
-                      {" "}
-                      {/* Reduced font and margin */}
-                      {player.name}
+                    <div className="font-semibold mb-2 lg:w-24 w-16 text-base">
+                      {player.name.toUpperCase()}
                     </div>
-                    <div className="mb-2">
-                      {" "}
-                      {/* Reduced margin */}
-                      <div className="text-xs text-gray-600 mb-1">Points</div>
-                      <input
-                        type="number"
-                        value={player.points === 0 ? "" : player.points}
-                        onChange={(e) => {
-                          const newPoints = parseInt(e.target.value) || 0;
-                          setPlayers(
-                            players.map((p) =>
-                              p.id === player.id
-                                ? { ...p, points: newPoints }
-                                : p
-                            )
-                          );
-                        }}
-                        className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 ${
-                          darkMode
-                            ? "bg-gray-800 border-gray-700 text-white"
-                            : "bg-white border-gray-200"
-                        }`}
-                        placeholder="Enter points"
-                      />
+                    <div className="flex flex-col ">
+                      {player.jokerSeen && (
+                        <>
+                          <input
+                            id={`points-input-${player.id}`}
+                            type="number"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={player.points === 0 ? "" : player.points}
+                            onChange={(e) => {
+                              const newPoints = parseInt(e.target.value) || 0;
+                              setPlayers(
+                                players.map((p) =>
+                                  p.id === player.id
+                                    ? { ...p, points: newPoints }
+                                    : p
+                                )
+                              );
+                            }}
+                            className={`max-w-10 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 ${
+                              darkMode
+                                ? "bg-gray-800 border-gray-700 text-white"
+                                : "bg-white border-gray-200"
+                            }`}
+                            aria-placeholder="enter points"
+                          />
+                          <label className="text-neutral-600 text-sm">
+                            Points
+                          </label>
+                        </>
+                      )}
                     </div>
-                    <div className="space-y-1">
-                      {" "}
-                      {/* Reduced spacing */}
+                    <div className="space-y-1 flex gap-3 w-1/2">
                       <button
                         onClick={() => handleJokerSeen(player.id)}
-                        className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        className={`w-full px-2 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-center gap-2 ${
                           darkMode
                             ? player.jokerSeen
                               ? "bg-blue-600 text-white hover:bg-blue-700"
@@ -361,24 +457,50 @@ export default function Home() {
                             : "bg-red-100 text-red-900 hover:bg-red-200"
                         }`}
                       >
-                        {player.jokerSeen ? "Seen ✓" : "Unseen"}
+                        {player.jokerSeen ? (
+                          <>
+                            <Eye size={18} /> Seen
+                          </>
+                        ) : (
+                          <>
+                            <EyeOff size={18} /> Unseen
+                          </>
+                        )}
                       </button>
                       <button
-                        onClick={() => handleWinner(player.id)}
-                        disabled={!player.jokerSeen || player.isWinner}
-                        className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                          player.isWinner
+                        onClick={() => handleWinnerSelect(player.id)}
+                        disabled={!player.jokerSeen}
+                        className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-center gap-1 ${
+                          player.id === selectedWinner
                             ? "bg-green-500 text-white shadow-sm"
                             : player.jokerSeen
                             ? "bg-gray-100 hover:bg-gray-200"
                             : "bg-gray-100 opacity-50 cursor-not-allowed"
                         }`}
                       >
-                        {player.isWinner ? "Winner! 🏆" : "Declare"}
+                        {player.id === selectedWinner ? (
+                          <>
+                            <Trophy size={18} /> Winner
+                          </>
+                        ) : (
+                          <>
+                            <Trophy size={18} /> Select Winner
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>
                 ))}
+                {selectedWinner && (
+                  <div className="flex justify-center pt-4">
+                    <button
+                      onClick={submitScores}
+                      className="px-6 py-3 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors duration-200"
+                    >
+                      Submit Scores
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
             {games.length > 0 && (
@@ -389,16 +511,22 @@ export default function Home() {
                     : "bg-white lg:shadow-sm border-gray-200"
                 } lg:rounded-xl border overflow-hidden`}
               >
-                <h2
-                  className={`text-xl font-semibold p-4 border-b ${
+                <div
+                  className={`flex justify-between text-xl font-semibold p-4 border-b ${
                     darkMode
                       ? "bg-gray-900 border-gray-700"
                       : "bg-gray-50 border-gray-200"
                   }`}
                 >
                   Game History
-                </h2>
-                <div className="overflow-x-auto">
+                  <button
+                    onClick={shareScoreboard}
+                    className="mr-4 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg flex items-center gap-2 text-base"
+                  >
+                    <Share2 size={16} strokeWidth={2} /> Share Scoreboard
+                  </button>
+                </div>
+                <div className="overflow-x-auto " ref={scoreboardRef}>
                   <table className="w-full border-collapse">
                     <thead>
                       <tr className="bg-gray-50">
@@ -415,7 +543,7 @@ export default function Home() {
                           </th>
                         ))}
                         <th className="border border-t-0 border-gray-300">
-                          Action
+                          Delete
                         </th>
                       </tr>
                     </thead>
@@ -432,19 +560,21 @@ export default function Home() {
                             <td
                               key={player.id}
                               className={`border border-gray-300 p-2 text-center ${
-                                game.winner === player.id ? "bg-green-100" : ""
+                                game.winner === player.id
+                                  ? "bg-green-200 text-green-900"
+                                  : ""
                               }`}
                             >
                               {game.scores[player.id]}
+                              <sup>{game.roundPoints[player.id]}</sup>
                             </td>
                           ))}
                           <td className="border border-gray-300 p-2 text-center">
                             <button
                               onClick={() => deleteGame(game.gameNo)}
                               className="text-red-600 hover:bg-red-100 px-2 py-1 rounded"
-                              title="Delete this game"
                             >
-                              ×
+                              <X size={18} />
                             </button>
                           </td>
                         </tr>
@@ -472,18 +602,15 @@ export default function Home() {
                 </div>
               </div>
             )}
-            <div className="p-4">
-              <button
-                onClick={resetGame}
-                className={`px-4 py-2 rounded transition-colors duration-200 ${
-                  darkMode
-                    ? "bg-red-600 hover:bg-red-700"
-                    : "bg-red-500 hover:bg-red-600"
-                } text-white`}
-              >
-                Reset Entire Game
-              </button>
-            </div>
+            <button
+              onClick={resetGame}
+              className={`w-full py-4 transition-colors duration-200 fixed bottom-0 left-0 right-0 md:static md:mt-32 md:rounded font-bold
+    ${
+      darkMode ? "bg-red-600 hover:bg-red-700" : "bg-red-500 hover:bg-red-600"
+    } text-white flex items-center justify-center gap-2`}
+            >
+              <RotateCcw size={18} strokeWidth={2} /> Reset Entire Game
+            </button>
           </div>
         )}
       </div>
