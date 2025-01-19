@@ -22,16 +22,19 @@ export default function Home() {
   const [error, setError] = useState("");
   const [darkMode, setDarkMode] = useState(false);
   const [selectedWinner, setSelectedWinner] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const isDark = localStorage.getItem("darkMode") === "true";
     setDarkMode(isDark);
   }, []);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       import("./serviceWorkerRegistration").then((reg) => reg.register());
     }
   }, []);
+
   const toggleDarkMode = () => {
     const newMode = !darkMode;
     setDarkMode(newMode);
@@ -53,46 +56,48 @@ export default function Home() {
       setStartGame(JSON.parse(savedGameState));
     }
   }, []);
+
   const shareScoreboard = async () => {
     if (!scoreboardRef.current) return;
 
     try {
-      const dataUrl = await toPng(scoreboardRef.current, {
-        quality: 1.0,
-        backgroundColor: "white",
-      });
+      const html2pdf = (await import("html2pdf.js")).default;
 
-      const blob = await (await fetch(dataUrl)).blob();
+      const element = scoreboardRef.current;
+      const opt = {
+        margin: 1,
+        filename: "marriage-game-scores.pdf",
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: "in", format: "letter", orientation: "landscape" },
+      };
 
-      // Check if the Web Share API is available and supports sharing files
+      const pdf = await html2pdf().set(opt).from(element).save();
+
+      // For mobile sharing
       if (navigator.share) {
         try {
-          // Try sharing with file first
-          const file = new File([blob], "scoreboard.png", {
-            type: "image/png",
+          // Convert the pdf to blob
+          const pdfBlob = await html2pdf()
+            .set(opt)
+            .from(element)
+            .output("blob");
+          const file = new File([pdfBlob], "marriage-game-scores.pdf", {
+            type: "application/pdf",
           });
+
           await navigator.share({
             title: "Marriage Card Game Scores",
             files: [file],
           });
         } catch (error) {
-          // If file sharing fails, fallback to sharing the data URL
-          await navigator.share({
-            title: "Marriage Card Game Scores",
-            text: "Marriage Card Game Scoreboard",
-            url: dataUrl,
-          });
+          // If sharing fails, the pdf would have already been downloaded
+          console.error("Error sharing:", error);
         }
-      } else {
-        // Fallback for browsers that don't support sharing
-        const link = document.createElement("a");
-        link.download = "scoreboard.png";
-        link.href = dataUrl;
-        link.click();
       }
     } catch (error) {
-      console.error("Error sharing:", error);
-      setError("Failed to share scoreboard");
+      console.error("Error generating PDF:", error);
+      setError("Failed to generate PDF");
       setTimeout(() => setError(""), 2000);
     }
   };
@@ -116,7 +121,7 @@ export default function Home() {
   };
 
   const addPlayer = () => {
-    if (players.length < 5) {
+    if (players.length < 8) {
       const newPlayerId = players.length + 1;
       setPlayers([
         ...players,
@@ -129,7 +134,6 @@ export default function Home() {
           roundPoints: 0,
         },
       ]);
-      // Focus the new player's input after a short delay
       setTimeout(() => {
         document.querySelector(`#player${newPlayerId}`)?.focus();
       }, 100);
@@ -174,7 +178,6 @@ export default function Home() {
       return;
     }
 
-    // If clicking the same player that's already selected, deselect them
     if (selectedWinner === playerId) {
       setSelectedWinner(null);
     } else {
@@ -182,59 +185,73 @@ export default function Home() {
     }
     setError("");
   };
+
   const submitScores = () => {
     if (!selectedWinner) {
       setError("Please select a winner first!");
       return;
     }
 
+    if (isSubmitting) {
+      setError("Please wait until the scores are processed.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
     const playersWithRoundPoints = players.map((player) => ({
       ...player,
       roundPoints: player.points,
     }));
 
-    // Calculate total points of the game (excluding unseen players)
-    const totalGamePoints =
-      playersWithRoundPoints.reduce((sum, player) => {
-        return player.jokerSeen ? sum + player.points : sum;
-      }, 0) + 3; // Add extra 3 points to total
+    // Calculate total maal (sum of points from seen players only)
+    const totalMaal = playersWithRoundPoints.reduce((sum, player) => {
+      return player.jokerSeen ? sum + player.points : sum;
+    }, 0);
 
     const numPlayers = playersWithRoundPoints.length;
 
+    // First calculate points for non-winner players
+    let nonWinnerPoints = [];
+    playersWithRoundPoints.forEach((p) => {
+      if (p.id !== selectedWinner) {
+        let points;
+        if (!p.jokerSeen) {
+          // Unseen player: -total maal - 10
+          points = -totalMaal - 10;
+        } else {
+          // Seen player: (points × number of players) - total maal - 3
+          points = p.points * numPlayers - totalMaal - 3;
+        }
+        nonWinnerPoints.push(points);
+      }
+    });
+
+    // Winner's points are negative sum of all other players' points
+    const winnerPoints = -nonWinnerPoints.reduce(
+      (sum, points) => sum + points,
+      0
+    );
+
+    // Create final updated players array
     const updatedPlayers = playersWithRoundPoints.map((p) => {
       if (p.id === selectedWinner) {
-        // Winner calculation
-        const seenPlayersCount = playersWithRoundPoints.filter(
-          (player) => player.jokerSeen && player.id !== selectedWinner
-        ).length;
-
-        const winnerPoints =
-          p.points * numPlayers -
-          totalGamePoints +
-          10 +
-          seenPlayersCount * 3 +
-          3;
-
         return {
           ...p,
           isWinner: true,
           points: winnerPoints,
         };
       } else if (!p.jokerSeen) {
-        // Unseen player calculation: -total points - 7
         return {
           ...p,
           isWinner: false,
-          points: -totalGamePoints - 7,
+          points: -totalMaal - 10,
         };
       } else {
-        // Seen players calculation: (current points × number of players) - total game points
-        const seenPlayerPoints = p.points * numPlayers - totalGamePoints;
-
         return {
           ...p,
           isWinner: false,
-          points: seenPlayerPoints,
+          points: p.points * numPlayers - totalMaal - 3,
         };
       }
     });
@@ -280,6 +297,7 @@ export default function Home() {
       );
       setSelectedWinner(null);
       setError("");
+      setIsSubmitting(false);
     }, 1500);
   };
 
@@ -303,6 +321,7 @@ export default function Home() {
       );
     }
   };
+
   return (
     <div
       className={` ${
@@ -394,12 +413,12 @@ export default function Home() {
                 </div>
               </div>
             )}
-            <div className="space-y-4 max-lg:p-4">
+            <div className="space-y-4">
               <div className="flex flex-col gap-2">
                 {players.map((player) => (
                   <div
                     key={player.id}
-                    className={`p-3 flex justify-between items-center rounded-xl md:border-1 md:shadow-md border-dotted ${
+                    className={`p-2 md:px-3 md:pt-2 flex justify-between items-center md:rounded-xl md:border-1 md:shadow-md border-dotted ${
                       darkMode
                         ? player.isWinner
                           ? "border-green-500 bg-green-900 bg-opacity-20"
@@ -413,8 +432,8 @@ export default function Home() {
                         : "border-gray-200 hover:border-gray-300"
                     }`}
                   >
-                    <div className="font-semibold mb-2 lg:w-24 w-16 text-base">
-                      {player.name.toUpperCase()}
+                    <div className="font-semibold mb-2 lg:w-20 w-14 text-base">
+                      {player.name.toLowerCase()}
                     </div>
                     <div className="flex flex-col ">
                       {player.jokerSeen && (
@@ -435,7 +454,7 @@ export default function Home() {
                                 )
                               );
                             }}
-                            className={`max-w-10 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 ${
+                            className={`max-w w-10 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 ${
                               darkMode
                                 ? "bg-gray-800 border-gray-700 text-white"
                                 : "bg-white border-gray-200"
@@ -499,9 +518,14 @@ export default function Home() {
                   <div className="flex justify-center pt-4">
                     <button
                       onClick={submitScores}
-                      className="px-6 py-3 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors duration-200"
+                      disabled={isSubmitting}
+                      className={`px-6 py-3 text-white rounded-lg font-medium transition-colors duration-200 ${
+                        isSubmitting
+                          ? "bg-gray-400 cursor-not-allowed"
+                          : "bg-green-500 hover:bg-green-600"
+                      }`}
                     >
-                      Submit Scores
+                      {isSubmitting ? "Submitting..." : "Submit Scores"}
                     </button>
                   </div>
                 )}
@@ -509,7 +533,7 @@ export default function Home() {
             </div>
             {games.length > 0 && (
               <div
-                className={`mt-8 transition-colors duration-200 ${
+                className={`mt-8 mb-24 transition-colors duration-200 ${
                   darkMode
                     ? "bg-gray-800 border-gray-700"
                     : "bg-white lg:shadow-sm border-gray-200"
@@ -527,15 +551,15 @@ export default function Home() {
                     onClick={shareScoreboard}
                     className="mr-4 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg flex items-center gap-2 text-base"
                   >
-                    <Share2 size={16} strokeWidth={2} /> Share Scoreboard
+                    <Share2 size={16} strokeWidth={2} /> Share PDF
                   </button>
                 </div>
                 <div className="overflow-x-auto " ref={scoreboardRef}>
-                  <table className="w-full border-collapse">
+                  <table className="w-full border-collapse text-sm">
                     <thead>
                       <tr className="bg-gray-50">
                         <th className="border-b border-gray-200 p-3 text-left">
-                          Round
+                          No.
                         </th>
                         {players.map((player) => (
                           <th
@@ -547,7 +571,7 @@ export default function Home() {
                           </th>
                         ))}
                         <th className="border border-t-0 border-gray-300">
-                          Delete
+                          Dismiss <br /> round ?
                         </th>
                       </tr>
                     </thead>
