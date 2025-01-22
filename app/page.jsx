@@ -194,43 +194,26 @@ export default function Home() {
     }));
 
     // Calculate total points of the game (excluding unseen players)
-    const totalGamePoints =
-      playersWithRoundPoints.reduce((sum, player) => {
-        return player.jokerSeen ? sum + player.points : sum;
-      }, 0) + 3; // Add extra 3 points to total
+    const totalGamePoints = playersWithRoundPoints.reduce((sum, player) => {
+      return player.jokerSeen ? sum + player.points : sum;
+    }, 0);
 
     const numPlayers = playersWithRoundPoints.length;
 
+    // First calculate points for non-winner players
     const updatedPlayers = playersWithRoundPoints.map((p) => {
       if (p.id === selectedWinner) {
-        // Winner calculation
-        const seenPlayersCount = playersWithRoundPoints.filter(
-          (player) => player.jokerSeen && player.id !== selectedWinner
-        ).length;
-
-        const winnerPoints =
-          p.points * numPlayers -
-          totalGamePoints +
-          10 +
-          seenPlayersCount * 3 +
-          3;
-
-        return {
-          ...p,
-          isWinner: true,
-          points: winnerPoints,
-        };
+        return { ...p, isWinner: true }; // Temporary placeholder for winner
       } else if (!p.jokerSeen) {
-        // Unseen player calculation: -total points - 7
+        // Unseen player calculation: -total points - 10
         return {
           ...p,
           isWinner: false,
-          points: -totalGamePoints - 7,
+          points: -totalGamePoints - 10,
         };
       } else {
-        // Seen players calculation: (current points × number of players) - total game points
-        const seenPlayerPoints = p.points * numPlayers - totalGamePoints;
-
+        // Seen players calculation: (current points × number of players) - total game points - 3
+        const seenPlayerPoints = p.points * numPlayers - totalGamePoints - 3;
         return {
           ...p,
           isWinner: false,
@@ -239,21 +222,37 @@ export default function Home() {
       }
     });
 
-    setPlayers(updatedPlayers);
+    // Now calculate winner's points as negative sum of all other players' points
+    const winnerPlayer = playersWithRoundPoints.find(
+      (p) => p.id === selectedWinner
+    );
+    const otherPlayersSum = updatedPlayers
+      .filter((p) => p.id !== selectedWinner)
+      .reduce((sum, p) => sum + p.points, 0);
+
+    // Final points calculation for winner: -(sum of other players' points + winner's base points)
+    const winnerPoints = -otherPlayersSum;
+
+    // Update the winner's points in the final array
+    const finalPlayers = updatedPlayers.map((p) =>
+      p.id === selectedWinner ? { ...p, points: winnerPoints } : p
+    );
+
+    setPlayers(finalPlayers);
 
     // Save game history with roundPoints
     const updatedGames = [
       ...games,
       {
         gameNo: games.length + 1,
-        scores: updatedPlayers.reduce(
+        scores: finalPlayers.reduce(
           (acc, player) => ({
             ...acc,
             [player.id]: player.points,
           }),
           {}
         ),
-        roundPoints: updatedPlayers.reduce(
+        roundPoints: finalPlayers.reduce(
           (acc, player) => ({
             ...acc,
             [player.id]: player.roundPoints,
@@ -270,7 +269,7 @@ export default function Home() {
     // Reset for next round after delay
     setTimeout(() => {
       setPlayers(
-        updatedPlayers.map((player) => ({
+        finalPlayers.map((player) => ({
           ...player,
           points: 0,
           isWinner: false,
