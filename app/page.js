@@ -2,8 +2,18 @@
 
 import { toPng } from "html-to-image";
 import { useState, useEffect, useRef } from "react";
-import { X, Trophy, Eye, EyeOff, RotateCcw, Share2, Save } from "lucide-react";
-import DealerTracker from "./components/DealerTracker";
+import {
+  X,
+  Plus,
+  Play,
+  Trophy,
+  Eye,
+  EyeOff,
+  RotateCcw,
+  Share2,
+  Save,
+  Share,
+} from "lucide-react";
 
 export default function Home() {
   const scoreboardRef = useRef(null);
@@ -357,9 +367,10 @@ export default function Home() {
       setSelectedWinner(null);
       setError("");
       setIsSubmitting(false);
-    }, 1500);
+    }, 300);
   };
 
+  //dismiss round
   const deleteGame = (gameNoToDelete) => {
     const isConfirmed = window.confirm(
       `Are you sure you want to delete round ${gameNoToDelete}?`
@@ -381,13 +392,32 @@ export default function Home() {
     }
   };
 
+  //delete saved game
+  const deleteSavedGame = (gameId) => {
+    const isConfirmed = window.confirm(
+      "Are you sure you want to delete this saved game?"
+    );
+
+    if (isConfirmed) {
+      const updatedSavedGames = savedGamesMetadata.filter(
+        (game) => game.id !== gameId
+      );
+
+      // Update localStorage
+      localStorage.setItem("savedGames", JSON.stringify(updatedSavedGames));
+
+      // Update state
+      setSavedGamesMetadata(updatedSavedGames);
+    }
+  };
+
   return (
     <div
       className={` ${
         darkMode
           ? "bg-gray-900 text-white"
-          : "lg:bg-gradient-to-br lg:from-blue-50 lg:to-indigo-50"
-      } lg:pt-8`}
+          : "lg:bg-gradient-to-br lg:from-blue-50 bg-neutral-50 lg:to-indigo-50"
+      } lg:pt-8 h-screen`}
     >
       {typeof window !== "undefined" && showSaveModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -427,75 +457,100 @@ export default function Home() {
       <div
         className={`max-w-6xl mx-auto lg:p-6 ${darkMode ? "text-white" : ""}`}
       >
-        <h1
-          className={`lg:block mt-12 ${
-            !startGame ? "block" : "hidden"
-          } text-5xl font-bold tracking-tighter pb-8 text-center ${
-            darkMode ? "text-white" : "text-black"
-          }`}
-        >
-          Marriage Point Calculator
-        </h1>
-
         {!startGame ? (
-          <div className="p-8">
-            <h2 className="text-xl font-semibold mb-4">Add Players</h2>
-            <div className="space-y-4">
-              {players.map((player) => (
-                <div key={player.id} className="flex items-center gap-4">
-                  <label htmlFor={`player${player.id}`} className="w-20">
-                    Player {player.id}
-                  </label>
-                  <input
-                    type="text"
-                    id={`player${player.id}`}
-                    value={player.name}
-                    onChange={(e) =>
-                      handleNameChange(player.id, e.target.value)
-                    }
-                    placeholder={`Enter player ${player.id} name`}
-                    className="flex-1 p-2 border rounded"
-                  />
-                  {players.length > 1 && (
-                    <button
-                      onClick={() => removePlayer(player.id)}
-                      className="px-3 py-1 text-red-600 hover:bg-red-50 rounded"
+          <>
+            <div className="relative font-mono h-screen bg-slate-800 text-white p-3">
+              <h1
+                className="text-6xl font-bold bg-gradient-to-r from-yellow-200 via-yellow-400 to-yellow-500 bg-clip-text text-transparent animate-scanline mb-8"
+                style={{
+                  textShadow: "0 0 10px rgba(234, 179, 8, 0.1)",
+                  WebkitBackgroundClip: "text",
+                  backgroundSize: "200% 100%",
+                  animation: "shimmer 2s linear infinite",
+                }}
+              >
+                Marriage Point Calculator
+              </h1>
+              <style>{`
+            @keyframes shimmer {
+              0% {
+                background-position: 200% 0;
+              }
+              100% {
+                background-position: -200% 0;
+              }
+            }
+           `}</style>
+
+              <div className="border border-green-500 p-6">
+                <h2 className="text-xl mb-6 animate-pulse">
+                  {`>`} Add Players_
+                </h2>
+
+                <div className="space-y-4">
+                  {players.map((player) => (
+                    <div
+                      key={player.id}
+                      className="flex items-center gap-4 group"
                     >
-                      <X size={20} />
+                      <span className="w-20 opacity-70">
+                        [Player {player.id}]
+                      </span>
+                      <input
+                        type="text"
+                        value={player.name}
+                        onChange={(e) =>
+                          handleNameChange(player.id, e.target.value)
+                        }
+                        placeholder="ENTER NAME"
+                        className="flex-1 bg-black border border-green-500 p-2 text-green-500 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400"
+                      />
+                      {players.length > 1 && (
+                        <button
+                          onClick={() => removePlayer(player.id)}
+                          className="px-3 py-1 text-red-500 hover:text-red-400 transition-colors"
+                        >
+                          <X size={20} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-6 space-y-4">
+                  {players.length < 8 && (
+                    <button
+                      onClick={addPlayer}
+                      className="w-full px-4 py-2 border border-green-500 text-green-500 hover:bg-green-500 hover:text-black transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Plus size={18} /> ADD_PLAYER.exe
                     </button>
                   )}
+
+                  <button
+                    onClick={() => {
+                      setStartGame(true);
+                      localStorage.setItem(
+                        "marriageGameState",
+                        JSON.stringify(true)
+                      );
+                      localStorage.setItem(
+                        "marriageGamePlayers",
+                        JSON.stringify(players)
+                      );
+                    }}
+                    disabled={
+                      players.length < 2 || players.some((p) => !p.name)
+                    }
+                    className="w-full px-4 py-2 border border-yellow-400 text-yellow-400 hover:bg-yellow-400 hover:text-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    <Play size={18} /> START_GAME.bat
+                  </button>
                 </div>
-              ))}
-            </div>
-            <div className="flex flex-col gap-2 mt-4">
-              {players.length < 8 && (
-                <button
-                  onClick={addPlayer}
-                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                >
-                  Add Player
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  setStartGame(true);
-                  localStorage.setItem(
-                    "marriageGameState",
-                    JSON.stringify(true)
-                  );
-                  localStorage.setItem(
-                    "marriageGamePlayers",
-                    JSON.stringify(players)
-                  );
-                }}
-                className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-                disabled={players.length < 2 || players.some((p) => !p.name)}
-              >
-                Start Game
-              </button>
+              </div>
               {savedGamesMetadata.length > 0 && (
                 <div
-                  className={`mt-4 p-4 border rounded-lg ${
+                  className={`mt-4 p-4 border ${
                     darkMode ? "border-gray-700" : "border-gray-200"
                   }`}
                 >
@@ -504,7 +559,7 @@ export default function Home() {
                     {savedGamesMetadata.map((game) => (
                       <div
                         key={game.id}
-                        className="flex justify-between items-center p-2 bg-gray-50 rounded"
+                        className="flex justify-between items-center p-2"
                       >
                         <div>
                           <div className="font-medium">{game.name}</div>
@@ -512,21 +567,186 @@ export default function Home() {
                             {new Date(game.date).toLocaleDateString()}
                           </div>
                         </div>
-                        <button
-                          onClick={() => loadSavedGame(game)}
-                          className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
-                        >
-                          Load
-                        </button>
+                        <div className="flex gap-3 text-sm">
+                          <button
+                            onClick={() => loadSavedGame(game)}
+                            className="px-4 py-2 border border-blue-500  text-white  hover:bg-blue-600"
+                          >
+                            Load
+                          </button>
+                          <button
+                            onClick={() => deleteSavedGame(game.id)}
+                            className="px-4 py-2 border border-red-500  text-white  hover:bg-red-600"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
             </div>
-          </div>
+          </>
         ) : (
+          //     <div className="p-8 h-screen bg-zinc-950 text-white">
+          //       <h1
+          //         className="text-6xl font-bold bg-gradient-to-r from-yellow-200 via-yellow-400 to-yellow-600 bg-clip-text text-transparent animate-shimmer"
+          //         style={{
+          //           textShadow: "0 0 10px rgba(234, 179, 8, 0.5)",
+          //           WebkitBackgroundClip: "text",
+          //           backgroundSize: "200% 100%",
+          //           animation: "shimmer 2s linear infinite",
+          //         }}
+          //       >
+          //         Marriage Point Calculator
+          //       </h1>
+          //       <style>{`
+          //   @keyframes shimmer {
+          //     0% {
+          //       background-position: 200% 0;
+          //     }
+          //     100% {
+          //       background-position: -200% 0;
+          //     }
+          //   }
+          // `}</style>
+          //       <h2 className="text-xl font-semibold mb-4">Add Players</h2>
+          //       <div className="space-y-4">
+          //         {players.map((player) => (
+          //           <div key={player.id} className="flex items-center gap-4">
+          //             <label htmlFor={`player${player.id}`} className="w-20">
+          //               Player {player.id}
+          //             </label>
+          //             <input
+          //               type="text"
+          //               id={`player${player.id}`}
+          //               value={player.name}
+          //               onChange={(e) =>
+          //                 handleNameChange(player.id, e.target.value)
+          //               }
+          //               placeholder={`Enter player ${player.id} name`}
+          //               className="flex-1 p-2 border rounded"
+          //             />
+          //             {players.length > 1 && (
+          //               <button
+          //                 onClick={() => removePlayer(player.id)}
+          //                 className="px-3 py-1 text-red-600 hover:bg-red-50 rounded"
+          //               >
+          //                 <X size={20} />
+          //               </button>
+          //             )}
+          //           </div>
+          //         ))}
+          //       </div>
+          //       <div className="flex flex-col gap-2 mt-4">
+          //         {players.length < 8 && (
+          //           <button
+          //             onClick={addPlayer}
+          //             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 flex items-center justify-center gap-2"
+          //           >
+          //             <Plus size={18} /> Add Player
+          //           </button>
+          //         )}
+          //         <button
+          //           onClick={() => {
+          //             setStartGame(true);
+          //             localStorage.setItem(
+          //               "marriageGameState",
+          //               JSON.stringify(true)
+          //             );
+          //             localStorage.setItem(
+          //               "marriageGamePlayers",
+          //               JSON.stringify(players)
+          //             );
+          //           }}
+          //           className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 flex items-center justify-center gap-2"
+          //           disabled={players.length < 2 || players.some((p) => !p.name)}
+          //         >
+          //           <Play size={18} /> Start Game
+          //         </button>
+          //         {savedGamesMetadata.length > 0 && (
+          //           <div
+          //             className={`mt-4 p-4 border rounded-lg ${
+          //               darkMode ? "border-gray-700" : "border-gray-200"
+          //             }`}
+          //           >
+          //             <h3 className="font-semibold mb-2">Saved Games</h3>
+          //             <div className="space-y-2">
+          //               {savedGamesMetadata.map((game) => (
+          //                 <div
+          //                   key={game.id}
+          //                   className="flex justify-between items-center p-2 bg-gray-50 rounded"
+          //                 >
+          //                   <div>
+          //                     <div className="font-medium">{game.name}</div>
+          //                     <div className="text-sm text-gray-500">
+          //                       {new Date(game.date).toLocaleDateString()}
+          //                     </div>
+          //                   </div>
+          //                   <button
+          //                     onClick={() => loadSavedGame(game)}
+          //                     className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+          //                   >
+          //                     Load
+          //                   </button>
+          //                 </div>
+          //               ))}
+          //             </div>
+          //           </div>
+          //         )}
+          //       </div>
+          //     </div>
           <div className="flex flex-col justify-between  lg:p-6 rounded-xl lg:shadow-sm">
+            {games.length < 1 && (
+              <div className="p-4 mb-6">
+                <div className="p-4 bg-gray-200 rounded-lg py-8">
+                  <h2 className="text-lg mb-4 font-mono">*** INSTRUCTIONS</h2>
+                  <div className="space-y-4 text-sm">
+                    <p>
+                      1. Mark players who have seen their cards using the{" "}
+                      <EyeOff size={14} className="inline text-red-600" />{" "}
+                      button
+                    </p>
+                    <p>
+                      2. For players who have seen their cards, enter their
+                      points
+                    </p>
+                    <p>
+                      3. Select the winner using the{" "}
+                      <Trophy size={14} className="inline text-green-600" />{" "}
+                      button
+                    </p>
+                    <p>
+                      4. Click{" "}
+                      <button
+                        className="bg-green-600 p-2 rounded-lg text-white font-semibold"
+                        disabled
+                      >
+                        Submit Scores
+                      </button>{" "}
+                      button to calculate and record the scores
+                    </p>
+                    <p>
+                      5. To dismiss a round, press the{" "}
+                      <X size={17} className="inline text-red-700" />
+                    </p>
+                    <p>
+                      6. To save the game locally, press the{" "}
+                      <Save size={17} className="inline" />
+                    </p>
+                    <p>
+                      7. To share the scoreboard, click the{" "}
+                      <Share2 className="inline" size={18} />
+                    </p>
+                    <p className="text-xs mt-4 ">
+                      Note: Players must see their cards before being selected
+                      as winner
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
             {error && (
               <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg">
                 <div className="flex">
@@ -547,13 +767,15 @@ export default function Home() {
                 } lg:rounded-xl overflow-hidden`}
               >
                 <div
-                  className={`flex justify-between text-xl font-semibold p-4 border-b ${
+                  className={`flex justify-between text-xl font-semibold px-4 py-8 border-b ${
                     darkMode
                       ? "bg-gray-900 border-gray-700"
                       : "bg-neutral-900 text-white border-neutral-800"
                   }`}
                 >
-                  Game History
+                  <span className="flex items-end font-bold text-2xl">
+                    Game History
+                  </span>
                   <div className="flex">
                     <button
                       onClick={shareScoreboard}
@@ -572,8 +794,8 @@ export default function Home() {
                 <div className="overflow-x-auto " ref={scoreboardRef}>
                   <table className="w-full text-sm border-collapse bg-neutral-200">
                     <thead>
-                      <tr className="bg-neutral-900 border border-black text-white">
-                        <th className=" text-center font-normal">No.</th>
+                      <tr className="bg-neutral-900 border border-black  text-white">
+                        <th className=" text-center font-normal py-4">No.</th>
                         {players.map((player) => (
                           <th
                             key={player.id}
@@ -644,7 +866,7 @@ export default function Home() {
               </div>
             )}
             <div className="space-y-4 ">
-              <div className="flex flex-col gap-2 bg-neutral-50 text-black">
+              <div className="flex flex-col gap-2  text-black">
                 {players.map((player) => (
                   <div
                     key={player.id}
@@ -764,25 +986,12 @@ export default function Home() {
             </div>
 
             <button
-              className="bg-black p-4 text-white w-fit"
-              onClick={() => setShowDealerModal(true)}
-            >
-              show dealer
-            </button>
-            {showDealerModal && (
-              <>
-                <DealerTracker
-                  players={players}
-                  darkMode={darkMode}
-                  showDealerModal={showDealerModal}
-                />
-              </>
-            )}
-            <button
               onClick={resetGame}
               className={`w-full py-4 transition-colors duration-200 fixed bottom-0 left-0 right-0 md:static md:mt-32 md:rounded font-bold
     ${
-      darkMode ? "bg-red-600 hover:bg-red-700" : "bg-red-500 hover:bg-red-600"
+      darkMode
+        ? "bg-red-600 hover:bg-red-700"
+        : "bg-red-600 hover:bg-rose-600 active:bg-red-400"
     } text-white flex items-center justify-center gap-2`}
             >
               <RotateCcw size={18} strokeWidth={2} /> Reset Entire Game
