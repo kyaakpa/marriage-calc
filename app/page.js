@@ -191,6 +191,7 @@ export default function Home() {
 
   const addPlayer = () => {
     if (players.length < 8) {
+      // Add new player with ID based on current length + 1
       const newPlayerId = players.length + 1;
       setPlayers([
         ...players,
@@ -211,7 +212,14 @@ export default function Home() {
 
   const removePlayer = (idToRemove) => {
     if (players.length > 1) {
-      setPlayers(players.filter((player) => player.id !== idToRemove));
+      // Remove the player and resequence the IDs
+      const updatedPlayers = players
+        .filter((player) => player.id !== idToRemove)
+        .map((player, index) => ({
+          ...player,
+          id: index + 1, // Resequence IDs starting from 1
+        }));
+      setPlayers(updatedPlayers);
     }
   };
 
@@ -497,6 +505,7 @@ export default function Home() {
                       <span className="opacity-70">[Player {player.id}]</span>
                       <input
                         type="text"
+                        id={`player${player.id}`}
                         value={player.name}
                         onChange={(e) =>
                           handleNameChange(player.id, e.target.value)
