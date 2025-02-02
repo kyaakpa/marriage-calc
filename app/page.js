@@ -2,10 +2,14 @@
 
 import { toPng } from "html-to-image";
 import { useState, useEffect, useRef } from "react";
-import { X, Trophy, Eye, EyeOff, RotateCcw, Share2 } from "lucide-react";
+import { X, Trophy, Eye, EyeOff, RotateCcw, Share2, Save } from "lucide-react";
+import DealerTracker from "./components/DealerTracker";
 
 export default function Home() {
   const scoreboardRef = useRef(null);
+  const [savedGamesMetadata, setSavedGamesMetadata] = useState([]);
+  const [saveGameName, setSaveGameName] = useState("");
+  const [showSaveModal, setShowSaveModal] = useState(false);
   const [players, setPlayers] = useState([
     {
       id: 1,
@@ -22,16 +26,20 @@ export default function Home() {
   const [error, setError] = useState("");
   const [darkMode, setDarkMode] = useState(false);
   const [selectedWinner, setSelectedWinner] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showDealerModal, setShowDealerModal] = useState(false);
 
   useEffect(() => {
     const isDark = localStorage.getItem("darkMode") === "true";
     setDarkMode(isDark);
   }, []);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       import("./serviceWorkerRegistration").then((reg) => reg.register());
     }
   }, []);
+
   const toggleDarkMode = () => {
     const newMode = !darkMode;
     setDarkMode(newMode);
@@ -53,46 +61,102 @@ export default function Home() {
       setStartGame(JSON.parse(savedGameState));
     }
   }, []);
+
+  useEffect(() => {
+    const savedGames = localStorage.getItem("savedGames");
+    if (savedGames) {
+      setSavedGamesMetadata(JSON.parse(savedGames));
+    }
+  }, []);
+
+  const handleSaveGame = () => {
+    if (!saveGameName.trim()) {
+      setError("Please enter a name for your saved game");
+      return;
+    }
+
+    const gameData = {
+      id: Date.now(),
+      name: saveGameName,
+      date: new Date().toISOString(),
+      players,
+      games,
+      startGame,
+    };
+
+    const existingSavedGames = JSON.parse(
+      localStorage.getItem("savedGames") || "[]"
+    );
+    const updatedSavedGames = [...existingSavedGames, gameData];
+
+    localStorage.setItem("savedGames", JSON.stringify(updatedSavedGames));
+    setSavedGamesMetadata(updatedSavedGames);
+
+    setSaveGameName("");
+    setShowSaveModal(false);
+    alert("Game saved successfully!");
+  };
+
+  const loadSavedGame = (gameData) => {
+    setPlayers(gameData.players);
+    setGames(gameData.games);
+    setStartGame(gameData.startGame);
+
+    localStorage?.setItem(
+      "marriageGamePlayers",
+      JSON.stringify(gameData.players)
+    );
+    localStorage?.setItem(
+      "marriageGameHistory",
+      JSON.stringify(gameData.games)
+    );
+    localStorage?.setItem(
+      "marriageGameState",
+      JSON.stringify(gameData.startGame)
+    );
+  };
+
   const shareScoreboard = async () => {
     if (!scoreboardRef.current) return;
 
     try {
-      const dataUrl = await toPng(scoreboardRef.current, {
-        quality: 1.0,
-        backgroundColor: "white",
-      });
+      const html2pdf = (await import("html2pdf.js")).default;
 
-      const blob = await (await fetch(dataUrl)).blob();
+      const element = scoreboardRef.current;
+      const opt = {
+        margin: 1,
+        filename: "marriage-game-scores.pdf",
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: "in", format: "letter", orientation: "landscape" },
+      };
 
-      // Check if the Web Share API is available and supports sharing files
+      const pdf = await html2pdf().set(opt).from(element).save();
+
+      // For mobile sharing
       if (navigator.share) {
         try {
-          // Try sharing with file first
-          const file = new File([blob], "scoreboard.png", {
-            type: "image/png",
+          // Convert the pdf to blob
+          const pdfBlob = await html2pdf()
+            .set(opt)
+            .from(element)
+            .output("blob");
+          const file = new File([pdfBlob], "marriage-game-scores.pdf", {
+            type: "application/pdf",
           });
+
           await navigator.share({
             title: "Marriage Card Game Scores",
             files: [file],
           });
         } catch (error) {
-          // If file sharing fails, fallback to sharing the data URL
-          await navigator.share({
-            title: "Marriage Card Game Scores",
-            text: "Marriage Card Game Scoreboard",
-            url: dataUrl,
-          });
+          // If sharing fails, the pdf would have already been downloaded
+          console.error("Error sharing:", error);
         }
-      } else {
-        // Fallback for browsers that don't support sharing
-        const link = document.createElement("a");
-        link.download = "scoreboard.png";
-        link.href = dataUrl;
-        link.click();
       }
     } catch (error) {
-      console.error("Error sharing:", error);
-      setError("Failed to share scoreboard");
+      console.error("Error generating PDF:", error);
+      setError("Failed to generate PDF");
       setTimeout(() => setError(""), 2000);
     }
   };
@@ -116,7 +180,7 @@ export default function Home() {
   };
 
   const addPlayer = () => {
-    if (players.length < 5) {
+    if (players.length < 8) {
       const newPlayerId = players.length + 1;
       setPlayers([
         ...players,
@@ -129,7 +193,6 @@ export default function Home() {
           roundPoints: 0,
         },
       ]);
-      // Focus the new player's input after a short delay
       setTimeout(() => {
         document.querySelector(`#player${newPlayerId}`)?.focus();
       }, 100);
@@ -174,7 +237,6 @@ export default function Home() {
       return;
     }
 
-    // If clicking the same player that's already selected, deselect them
     if (selectedWinner === playerId) {
       setSelectedWinner(null);
     } else {
@@ -182,77 +244,92 @@ export default function Home() {
     }
     setError("");
   };
+
   const submitScores = () => {
     if (!selectedWinner) {
       setError("Please select a winner first!");
       return;
     }
 
+    if (isSubmitting) {
+      setError("Please wait until the scores are processed.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
     const playersWithRoundPoints = players.map((player) => ({
       ...player,
       roundPoints: player.points,
     }));
 
-    // Calculate total points of the game (excluding unseen players)
-    const totalGamePoints = playersWithRoundPoints.reduce((sum, player) => {
+    // Calculate total maal (sum of points from seen players only)
+    const totalMaal = playersWithRoundPoints.reduce((sum, player) => {
       return player.jokerSeen ? sum + player.points : sum;
     }, 0);
 
     const numPlayers = playersWithRoundPoints.length;
 
     // First calculate points for non-winner players
+    let nonWinnerPoints = [];
+    playersWithRoundPoints.forEach((p) => {
+      if (p.id !== selectedWinner) {
+        let points;
+        if (!p.jokerSeen) {
+          // Unseen player: -total maal - 10
+          points = -totalMaal - 10;
+        } else {
+          // Seen player: (points × number of players) - total maal - 3
+          points = p.points * numPlayers - totalMaal - 3;
+        }
+        nonWinnerPoints.push(points);
+      }
+    });
+
+    // Winner's points are negative sum of all other players' points
+    const winnerPoints = -nonWinnerPoints.reduce(
+      (sum, points) => sum + points,
+      0
+    );
+
+    // Create final updated players array
     const updatedPlayers = playersWithRoundPoints.map((p) => {
       if (p.id === selectedWinner) {
-        return { ...p, isWinner: true }; // Temporary placeholder for winner
+        return {
+          ...p,
+          isWinner: true,
+          points: winnerPoints,
+        };
       } else if (!p.jokerSeen) {
-        // Unseen player calculation: -total points - 10
         return {
           ...p,
           isWinner: false,
-          points: -totalGamePoints - 10,
+          points: -totalMaal - 10,
         };
       } else {
-        // Seen players calculation: (current points × number of players) - total game points - 3
-        const seenPlayerPoints = p.points * numPlayers - totalGamePoints - 3;
         return {
           ...p,
           isWinner: false,
-          points: seenPlayerPoints,
+          points: p.points * numPlayers - totalMaal - 3,
         };
       }
     });
 
-    // Now calculate winner's points as negative sum of all other players' points
-    const winnerPlayer = playersWithRoundPoints.find(
-      (p) => p.id === selectedWinner
-    );
-    const otherPlayersSum = updatedPlayers
-      .filter((p) => p.id !== selectedWinner)
-      .reduce((sum, p) => sum + p.points, 0);
-
-    // Final points calculation for winner: -(sum of other players' points + winner's base points)
-    const winnerPoints = -otherPlayersSum;
-
-    // Update the winner's points in the final array
-    const finalPlayers = updatedPlayers.map((p) =>
-      p.id === selectedWinner ? { ...p, points: winnerPoints } : p
-    );
-
-    setPlayers(finalPlayers);
+    setPlayers(updatedPlayers);
 
     // Save game history with roundPoints
     const updatedGames = [
       ...games,
       {
         gameNo: games.length + 1,
-        scores: finalPlayers.reduce(
+        scores: updatedPlayers.reduce(
           (acc, player) => ({
             ...acc,
             [player.id]: player.points,
           }),
           {}
         ),
-        roundPoints: finalPlayers.reduce(
+        roundPoints: updatedPlayers.reduce(
           (acc, player) => ({
             ...acc,
             [player.id]: player.roundPoints,
@@ -269,7 +346,7 @@ export default function Home() {
     // Reset for next round after delay
     setTimeout(() => {
       setPlayers(
-        finalPlayers.map((player) => ({
+        updatedPlayers.map((player) => ({
           ...player,
           points: 0,
           isWinner: false,
@@ -279,6 +356,7 @@ export default function Home() {
       );
       setSelectedWinner(null);
       setError("");
+      setIsSubmitting(false);
     }, 1500);
   };
 
@@ -302,6 +380,7 @@ export default function Home() {
       );
     }
   };
+
   return (
     <div
       className={` ${
@@ -310,6 +389,41 @@ export default function Home() {
           : "lg:bg-gradient-to-br lg:from-blue-50 lg:to-indigo-50"
       } lg:pt-8`}
     >
+      {typeof window !== "undefined" && showSaveModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div
+            className={`bg-white rounded-lg p-6 max-w-md w-full ${
+              darkMode ? "bg-gray-800" : ""
+            }`}
+          >
+            <h3 className="text-lg font-semibold mb-4">Save Game</h3>
+            <input
+              type="text"
+              value={saveGameName}
+              onChange={(e) => setSaveGameName(e.target.value)}
+              placeholder="Enter a name for your saved game"
+              className={`w-full p-2 border rounded mb-4 ${
+                darkMode ? "bg-gray-700 border-gray-600 text-white" : ""
+              }`}
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowSaveModal(false)}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveGame}
+                className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div
         className={`max-w-6xl mx-auto lg:p-6 ${darkMode ? "text-white" : ""}`}
       >
@@ -379,10 +493,40 @@ export default function Home() {
               >
                 Start Game
               </button>
+              {savedGamesMetadata.length > 0 && (
+                <div
+                  className={`mt-4 p-4 border rounded-lg ${
+                    darkMode ? "border-gray-700" : "border-gray-200"
+                  }`}
+                >
+                  <h3 className="font-semibold mb-2">Saved Games</h3>
+                  <div className="space-y-2">
+                    {savedGamesMetadata.map((game) => (
+                      <div
+                        key={game.id}
+                        className="flex justify-between items-center p-2 bg-gray-50 rounded"
+                      >
+                        <div>
+                          <div className="font-medium">{game.name}</div>
+                          <div className="text-sm text-gray-500">
+                            {new Date(game.date).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => loadSavedGame(game)}
+                          className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                        >
+                          Load
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ) : (
-          <div className="flex flex-col justify-between bg-white lg:p-6 max-lg:pt-2 rounded-xl lg:shadow-sm">
+          <div className="flex flex-col justify-between  lg:p-6 rounded-xl lg:shadow-sm">
             {error && (
               <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg">
                 <div className="flex">
@@ -393,12 +537,118 @@ export default function Home() {
                 </div>
               </div>
             )}
-            <div className="space-y-4 max-lg:p-4">
-              <div className="flex flex-col gap-2">
+
+            {games.length > 0 && (
+              <div
+                className={`mb-8 transition-colors duration-200 ${
+                  darkMode
+                    ? "bg-gray-800 border-gray-700"
+                    : "bg-white lg:shadow-sm border-gray-200"
+                } lg:rounded-xl overflow-hidden`}
+              >
+                <div
+                  className={`flex justify-between text-xl font-semibold p-4 border-b ${
+                    darkMode
+                      ? "bg-gray-900 border-gray-700"
+                      : "bg-neutral-900 text-white border-neutral-800"
+                  }`}
+                >
+                  Game History
+                  <div className="flex">
+                    <button
+                      onClick={shareScoreboard}
+                      className="mr-4 px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-full flex items-center gap-2 text-base"
+                    >
+                      <Share2 size={18} strokeWidth={2} />
+                    </button>
+                    <button
+                      onClick={() => setShowSaveModal(true)}
+                      className="mr-4 px-4 py-2 bg-neutral-900 hover:bg-neutral-800 rounded-full"
+                    >
+                      <Save size={19} strokeWidth={2} />
+                    </button>
+                  </div>
+                </div>
+                <div className="overflow-x-auto " ref={scoreboardRef}>
+                  <table className="w-full text-sm border-collapse bg-neutral-200">
+                    <thead>
+                      <tr className="bg-neutral-900 border border-black text-white">
+                        <th className=" text-center font-normal">No.</th>
+                        {players.map((player) => (
+                          <th
+                            key={player.id}
+                            className="p-2 font-normal"
+                            title={player.name}
+                          >
+                            {player.name.substring(0, 4).toUpperCase()}
+                          </th>
+                        ))}
+                        <th className="border-neutral-800 font-normal">
+                          Dismiss <br /> round ?
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {games.map((game) => (
+                        <tr
+                          key={game.gameNo}
+                          className="hover:bg-gray-50 transition-colors font-semibold"
+                        >
+                          <td className="border border-gray-300 p-2 text-center">
+                            {game.gameNo}
+                          </td>
+                          {players.map((player) => (
+                            <td
+                              key={player.id}
+                              className={`border border-gray-300 p-2 text-center ${
+                                game.winner === player.id
+                                  ? "bg-green-200 text-green-900"
+                                  : ""
+                              }`}
+                            >
+                              {game.scores[player.id]}
+                              <sup>{game.roundPoints[player.id]}</sup>
+                            </td>
+                          ))}
+                          <td className="border border-gray-300 p-2 text-center">
+                            <button
+                              onClick={() => deleteGame(game.gameNo)}
+                              className="text-red-600 hover:bg-red-100 px-2 py-1 rounded"
+                            >
+                              <X size={18} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      <tr className="bg-gray-50 font-bold">
+                        <td className="border border-gray-300 p-2 text-center">
+                          Total
+                        </td>
+                        {players.map((player) => (
+                          <td
+                            key={player.id}
+                            className="border border-gray-300 p-2 text-center"
+                          >
+                            {games.reduce(
+                              (sum, game) =>
+                                sum + (game.scores[player.id] || 0),
+                              0
+                            )}
+                          </td>
+                        ))}
+                        <td className="border border-gray-300 p-2"></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            <div className="space-y-4 ">
+              <div className="flex flex-col gap-2 bg-neutral-50 text-black">
                 {players.map((player) => (
                   <div
                     key={player.id}
-                    className={`p-3 flex justify-between items-center rounded-xl md:border-1 md:shadow-md border-dotted ${
+                    className={`p-2 md:px-3 md:pt-2 flex justify-between items-center md:rounded-xl md:border-1 md:shadow-md border-dotted ${
                       darkMode
                         ? player.isWinner
                           ? "border-green-500 bg-green-900 bg-opacity-20"
@@ -412,8 +662,8 @@ export default function Home() {
                         : "border-gray-200 hover:border-gray-300"
                     }`}
                   >
-                    <div className="font-semibold mb-2 lg:w-24 w-16 text-base">
-                      {player.name.toUpperCase()}
+                    <div className="font-semibold mb-2 lg:w-20 w-14 text-base">
+                      {player.name.toLowerCase()}
                     </div>
                     <div className="flex flex-col ">
                       {player.jokerSeen && (
@@ -434,7 +684,7 @@ export default function Home() {
                                 )
                               );
                             }}
-                            className={`max-w-10 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 ${
+                            className={`max-w w-10 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 ${
                               darkMode
                                 ? "bg-gray-800 border-gray-700 text-white"
                                 : "bg-white border-gray-200"
@@ -447,6 +697,7 @@ export default function Home() {
                         </>
                       )}
                     </div>
+
                     <div className="space-y-1 flex gap-3 w-1/2">
                       <button
                         onClick={() => handleJokerSeen(player.id)}
@@ -498,112 +749,34 @@ export default function Home() {
                   <div className="flex justify-center pt-4">
                     <button
                       onClick={submitScores}
-                      className="px-6 py-3 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors duration-200"
+                      disabled={isSubmitting}
+                      className={`px-6 py-3 text-white rounded-lg font-medium transition-colors duration-200 ${
+                        isSubmitting
+                          ? "bg-gray-400 cursor-not-allowed"
+                          : "bg-green-500 hover:bg-green-600"
+                      }`}
                     >
-                      Submit Scores
+                      {isSubmitting ? "Submitting..." : "Submit Scores"}
                     </button>
                   </div>
                 )}
               </div>
             </div>
-            {games.length > 0 && (
-              <div
-                className={`mt-8 transition-colors duration-200 ${
-                  darkMode
-                    ? "bg-gray-800 border-gray-700"
-                    : "bg-white lg:shadow-sm border-gray-200"
-                } lg:rounded-xl border overflow-hidden`}
-              >
-                <div
-                  className={`flex justify-between text-xl font-semibold p-4 border-b ${
-                    darkMode
-                      ? "bg-gray-900 border-gray-700"
-                      : "bg-gray-50 border-gray-200"
-                  }`}
-                >
-                  Game History
-                  <button
-                    onClick={shareScoreboard}
-                    className="mr-4 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg flex items-center gap-2 text-base"
-                  >
-                    <Share2 size={16} strokeWidth={2} /> Share Scoreboard
-                  </button>
-                </div>
-                <div className="overflow-x-auto " ref={scoreboardRef}>
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr className="bg-gray-50">
-                        <th className="border-b border-gray-200 p-3 text-left">
-                          Round
-                        </th>
-                        {players.map((player) => (
-                          <th
-                            key={player.id}
-                            className="border border-t-0 border-gray-300 p-2"
-                            title={player.name}
-                          >
-                            {player.name.substring(0, 4).toUpperCase()}
-                          </th>
-                        ))}
-                        <th className="border border-t-0 border-gray-300">
-                          Delete
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {games.map((game) => (
-                        <tr
-                          key={game.gameNo}
-                          className="hover:bg-gray-50 transition-colors"
-                        >
-                          <td className="border border-gray-300 p-2 text-center">
-                            {game.gameNo}
-                          </td>
-                          {players.map((player) => (
-                            <td
-                              key={player.id}
-                              className={`border border-gray-300 p-2 text-center ${
-                                game.winner === player.id
-                                  ? "bg-green-200 text-green-900"
-                                  : ""
-                              }`}
-                            >
-                              {game.scores[player.id]}
-                              <sup>{game.roundPoints[player.id]}</sup>
-                            </td>
-                          ))}
-                          <td className="border border-gray-300 p-2 text-center">
-                            <button
-                              onClick={() => deleteGame(game.gameNo)}
-                              className="text-red-600 hover:bg-red-100 px-2 py-1 rounded"
-                            >
-                              <X size={18} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      <tr className="bg-gray-50 font-bold">
-                        <td className="border border-gray-300 p-2 text-center">
-                          Total
-                        </td>
-                        {players.map((player) => (
-                          <td
-                            key={player.id}
-                            className="border border-gray-300 p-2 text-center"
-                          >
-                            {games.reduce(
-                              (sum, game) =>
-                                sum + (game.scores[player.id] || 0),
-                              0
-                            )}
-                          </td>
-                        ))}
-                        <td className="border border-gray-300 p-2"></td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+
+            <button
+              className="bg-black p-4 text-white w-fit"
+              onClick={() => setShowDealerModal(true)}
+            >
+              show dealer
+            </button>
+            {showDealerModal && (
+              <>
+                <DealerTracker
+                  players={players}
+                  darkMode={darkMode}
+                  showDealerModal={showDealerModal}
+                />
+              </>
             )}
             <button
               onClick={resetGame}
