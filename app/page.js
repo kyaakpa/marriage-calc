@@ -421,11 +421,9 @@ export default function Home() {
 
   return (
     <div
-      className={` ${
-        darkMode
-          ? "bg-gray-900 text-white"
-          : "lg:bg-gradient-to-br lg:from-blue-50 bg-neutral-50 lg:to-indigo-50"
-      } lg:pt-8 h-screen`}
+      className={`min-h-screen ${
+        darkMode ? "bg-gray-900 text-white" : "bg-neutral-50"
+      }`}
     >
       {typeof window !== "undefined" && showSaveModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -705,7 +703,7 @@ export default function Home() {
           //         )}
           //       </div>
           //     </div>
-          <div className="flex flex-col justify-between  lg:p-6 rounded-xl lg:shadow-sm">
+          <div className="flex flex-col justify-between pb-16  lg:p-6 rounded-xl lg:shadow-sm">
             {games.length < 1 && (
               <div className="p-4 mb-6">
                 <div className="p-4 bg-gray-200 rounded-lg py-8">
@@ -873,7 +871,34 @@ export default function Home() {
                 </div>
               </div>
             )}
-            <div className="space-y-4 ">
+
+            {selectedWinner && (
+              <div className="flex justify-center gap-4 pb-4">
+                <button
+                  onClick={submitScores}
+                  disabled={isSubmitting}
+                  className={`px-4 py-2 text-white rounded-lg font-medium transition-colors duration-200 ${
+                    isSubmitting
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-neutral-900 hover:bg-neutral-500 drop-shadow-lg"
+                  }`}
+                >
+                  Calculate(not working)
+                </button>
+                <button
+                  onClick={submitScores}
+                  disabled={isSubmitting}
+                  className={`px-4 py-2 text-white rounded-lg font-medium transition-colors duration-200 ${
+                    isSubmitting
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-emerald-500 hover:bg-green-300 drop-shadow-lg"
+                  }`}
+                >
+                  {isSubmitting ? "Submitting..." : "Submit Scores"}
+                </button>
+              </div>
+            )}
+            <div className="space-y-4">
               <div className="flex flex-col gap-2  text-black">
                 {players.map((player) => (
                   <div
@@ -975,32 +1000,13 @@ export default function Home() {
                     </div>
                   </div>
                 ))}
-                {selectedWinner && (
-                  <div className="flex justify-center pt-4">
-                    <button
-                      onClick={submitScores}
-                      disabled={isSubmitting}
-                      className={`px-6 py-3 text-white rounded-lg font-medium transition-colors duration-200 ${
-                        isSubmitting
-                          ? "bg-gray-400 cursor-not-allowed"
-                          : "bg-green-500 hover:bg-green-600"
-                      }`}
-                    >
-                      {isSubmitting ? "Submitting..." : "Submit Scores"}
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
-
             <button
               onClick={resetGame}
-              className={`w-full py-4 transition-colors duration-200 fixed bottom-0 left-0 right-0 md:static md:mt-32 md:rounded font-bold
-    ${
-      darkMode
-        ? "bg-red-600 hover:bg-red-700"
-        : "bg-red-600 hover:bg-rose-600 active:bg-red-400"
-    } text-white flex items-center justify-center gap-2`}
+              className={`w-full py-4 transition-colors duration-200 font-bold fixed bottom-0 left-0 right-0 md:static md:mt-8
+   
+       bg-red-600 hover:bg-rose-600 active:bg-red-400 text-white flex items-center justify-center gap-2`}
             >
               <RotateCcw size={18} strokeWidth={2} /> Reset Entire Game
             </button>
