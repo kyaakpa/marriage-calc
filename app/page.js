@@ -1002,14 +1002,16 @@ export default function Home() {
                 ))}
               </div>
             </div>
-            <button
-              onClick={resetGame}
-              className={`w-full py-4 transition-colors duration-200 font-bold fixed bottom-0 left-0 right-0 md:static md:mt-8
+            <div className="mt-16">
+              <button
+                onClick={resetGame}
+                className={`py-4  transition-colors duration-200 font-bold fixed bottom-0 left-0 right-0 md:static md:mt-8
    
        bg-red-600 hover:bg-rose-600 active:bg-red-400 text-white flex items-center justify-center gap-2`}
-            >
-              <RotateCcw size={18} strokeWidth={2} /> Reset Entire Game
-            </button>
+              >
+                <RotateCcw size={18} strokeWidth={2} /> Reset Entire Game
+              </button>
+            </div>
           </div>
         )}
       </div>
