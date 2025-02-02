@@ -459,7 +459,7 @@ export default function Home() {
       >
         {!startGame ? (
           <>
-            <div className="relative font-mono h-screen bg-slate-800 text-white p-3">
+            <div className="relative font-mono h-screen bg-slate-800 text-white p-3 pt-14">
               <h1
                 className="text-6xl font-bold bg-gradient-to-r from-yellow-200 via-yellow-400 to-yellow-500 bg-clip-text text-transparent animate-scanline mb-8"
                 style={{
@@ -469,7 +469,8 @@ export default function Home() {
                   animation: "shimmer 2s linear infinite",
                 }}
               >
-                Marriage Point Calculator
+                Marriage <br /> Point <br />
+                Calculator
               </h1>
               <style>{`
             @keyframes shimmer {
@@ -491,11 +492,9 @@ export default function Home() {
                   {players.map((player) => (
                     <div
                       key={player.id}
-                      className="flex items-center gap-4 group"
+                      className="flex items-center gap-4 justify-between"
                     >
-                      <span className="w-20 opacity-70">
-                        [Player {player.id}]
-                      </span>
+                      <span className="opacity-70">[Player {player.id}]</span>
                       <input
                         type="text"
                         value={player.name}
@@ -503,7 +502,7 @@ export default function Home() {
                           handleNameChange(player.id, e.target.value)
                         }
                         placeholder="ENTER NAME"
-                        className="flex-1 bg-black border border-green-500 p-2 text-green-500 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400"
+                        className="flex-1 bg-neutral-950 border border-green-500 p-2 text-green-500 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400"
                       />
                       {players.length > 1 && (
                         <button
