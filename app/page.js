@@ -19,6 +19,7 @@ export default function Home() {
   const scoreboardRef = useRef(null);
   const [savedGamesMetadata, setSavedGamesMetadata] = useState([]);
   const [saveGameName, setSaveGameName] = useState("");
+  const [calculatedScores, setCalculatedScores] = useState([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [players, setPlayers] = useState([
     {
@@ -37,11 +38,52 @@ export default function Home() {
   const [darkMode, setDarkMode] = useState(false);
   const [selectedWinner, setSelectedWinner] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showDealerModal, setShowDealerModal] = useState(false);
+  const [isCalculating, setIsCalculating] = useState(false);
+  const [lastSaved, setLastSaved] = useState(null);
 
   useEffect(() => {
     const isDark = localStorage.getItem("darkMode") === "true";
     setDarkMode(isDark);
+  }, []);
+
+  useEffect(() => {
+    const saveState = () => {
+      const gameState = {
+        players,
+        games,
+        startGame,
+        lastSaved: new Date().toISOString(),
+      };
+
+      localStorage.setItem("marriageGameAutoSave", JSON.stringify(gameState));
+      setLastSaved(new Date().toISOString());
+    };
+
+    // Save whenever these states change
+    const autoSaveTimer = setTimeout(saveState, 1000);
+
+    return () => clearTimeout(autoSaveTimer);
+  }, [players, games, startGame]);
+
+  // Load auto-saved state on component mount
+  useEffect(() => {
+    const savedState = localStorage.getItem("marriageGameAutoSave");
+    if (savedState) {
+      const {
+        players: savedPlayers,
+        games: savedGames,
+        startGame: savedGameState,
+        lastSaved: savedTimestamp,
+      } = JSON.parse(savedState);
+
+      // Only restore if there's actually saved data
+      if (savedPlayers?.length > 0 || savedGames?.length > 0) {
+        setPlayers(savedPlayers);
+        setGames(savedGames);
+        setStartGame(savedGameState);
+        setLastSaved(savedTimestamp);
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -175,6 +217,7 @@ export default function Home() {
     localStorage.removeItem("marriageGamePlayers");
     localStorage.removeItem("marriageGameHistory");
     localStorage.removeItem("marriageGameState");
+    localStorage.removeItem("marriageGameAutoSave"); // Clear auto-save
     setPlayers([
       {
         id: 1,
@@ -187,6 +230,7 @@ export default function Home() {
     ]);
     setGames([]);
     setStartGame(false);
+    setLastSaved(null);
   };
 
   const addPlayer = () => {
@@ -263,7 +307,58 @@ export default function Home() {
     setError("");
   };
 
+  const calculateScores = () => {
+    setIsCalculating(true);
+    if (!selectedWinner) {
+      setError("Please select a winner first!");
+      return;
+    }
+
+    // Calculate total maal (sum of points from seen players only)
+    const totalMaal = players.reduce((sum, player) => {
+      return player.jokerSeen ? sum + player.points : sum;
+    }, 0);
+
+    const numPlayers = players.length;
+
+    const scores = players.map((player) => {
+      let calculatedScore;
+      if (player.id === selectedWinner) {
+        // Calculate winner's points based on other players' scores
+        const nonWinnerPoints = players
+          .filter((p) => p.id !== selectedWinner)
+          .map((p) => {
+            if (!p.jokerSeen) {
+              return -totalMaal - 10;
+            } else {
+              return p.points * numPlayers - totalMaal - 3;
+            }
+          });
+        calculatedScore = -nonWinnerPoints.reduce(
+          (sum, points) => sum + points,
+          0
+        );
+      } else if (!player.jokerSeen) {
+        calculatedScore = -totalMaal - 10;
+      } else {
+        calculatedScore = player.points * numPlayers - totalMaal - 3;
+      }
+
+      return {
+        id: player.id,
+        name: player.name,
+        currentPoints: player.points,
+        calculatedScore,
+        jokerSeen: player.jokerSeen,
+        isWinner: player.id === selectedWinner,
+      };
+    });
+
+    setCalculatedScores([...scores, { totalMaal }]);
+  };
+
   const submitScores = () => {
+    setIsCalculating(false);
     if (!selectedWinner) {
       setError("Please select a winner first!");
       return;
@@ -418,6 +513,8 @@ export default function Home() {
       setSavedGamesMetadata(updatedSavedGames);
     }
   };
+
+  console.log(calculatedScores);
 
   return (
     <div
@@ -772,6 +869,13 @@ export default function Home() {
                     : "bg-white lg:shadow-sm border-gray-200"
                 } lg:rounded-xl overflow-hidden`}
               >
+                {lastSaved && (
+                  <div className="fixed top-1 right-2">
+                    <span className="text-xs text-gray-500">
+                      Auto-saved: {new Date(lastSaved).toLocaleTimeString()}
+                    </span>
+                  </div>
+                )}
                 <div
                   className={`flex justify-between text-xl font-semibold px-4 py-8 border-b ${
                     darkMode
@@ -873,30 +977,89 @@ export default function Home() {
             )}
 
             {selectedWinner && (
-              <div className="flex justify-center gap-4 pb-4">
-                <button
-                  onClick={submitScores}
-                  disabled={isSubmitting}
-                  className={`px-4 py-2 text-white rounded-lg font-medium transition-colors duration-200 ${
-                    isSubmitting
-                      ? "bg-gray-400 cursor-not-allowed"
-                      : "bg-neutral-900 hover:bg-neutral-500 drop-shadow-lg"
-                  }`}
-                >
-                  Calculate(not working)
-                </button>
-                <button
-                  onClick={submitScores}
-                  disabled={isSubmitting}
-                  className={`px-4 py-2 text-white rounded-lg font-medium transition-colors duration-200 ${
-                    isSubmitting
-                      ? "bg-gray-400 cursor-not-allowed"
-                      : "bg-emerald-500 hover:bg-green-300 drop-shadow-lg"
-                  }`}
-                >
-                  {isSubmitting ? "Submitting..." : "Submit Scores"}
-                </button>
-              </div>
+              <>
+                {isCalculating && calculatedScores.length > 0 && (
+                  <div className="space-y-2 p-3">
+                    <h3 className="text-lg font-semibold mb-4">
+                      Calculated Scores
+                    </h3>
+                  </div>
+                )}
+                {isCalculating &&
+                  calculatedScores.length > 0 &&
+                  calculatedScores.slice(0, -1).map((score) => (
+                    <div
+                      key={score.id}
+                      className={`p-3 rounded-lg ${
+                        score.isWinner
+                          ? "bg-green-100"
+                          : score.jokerSeen
+                          ? "bg-blue-50"
+                          : "bg-gray-50"
+                      }`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium">
+                          {score.name} {score.isWinner && "👑"}
+                        </span>
+                        <span
+                          className={`font-bold ${
+                            score.calculatedScore >= 0
+                              ? "text-green-600"
+                              : "text-red-600"
+                          }`}
+                        >
+                          {score.calculatedScore}
+                        </span>
+                      </div>
+                      {score.jokerSeen && (
+                        <div className="text-sm text-gray-600 mt-1">
+                          Maal: {score.currentPoints}
+                        </div>
+                      )}
+                      {!score.jokerSeen && (
+                        <div className="text-sm text-red-600 mt-1">Unseen</div>
+                      )}
+                    </div>
+                  ))}
+                {isCalculating && calculatedScores.length > 0 && (
+                  <div className="mt-4 pt-2 border-t border-gray-200 p-3 mb-4">
+                    <div className="flex justify-between items-center font-medium">
+                      <span>Total Maal:</span>
+                      <span>
+                        {
+                          calculatedScores[calculatedScores.length - 1]
+                            .totalMaal
+                        }
+                      </span>
+                    </div>
+                  </div>
+                )}
+                <div className="flex justify-center gap-4 pb-4">
+                  <button
+                    onClick={calculateScores}
+                    disabled={isCalculating}
+                    className={`px-4 py-2 text-white rounded-lg font-medium transition-colors duration-200 ${
+                      isSubmitting
+                        ? "bg-gray-400 cursor-not-allowed"
+                        : "bg-neutral-900 hover:bg-neutral-500 drop-shadow-lg"
+                    }`}
+                  >
+                    Calculate
+                  </button>
+                  <button
+                    onClick={submitScores}
+                    disabled={isSubmitting}
+                    className={`px-4 py-2 text-white rounded-lg font-medium transition-colors duration-200 ${
+                      isSubmitting
+                        ? "bg-gray-400 cursor-not-allowed"
+                        : "bg-emerald-500 hover:bg-green-300 drop-shadow-lg"
+                    }`}
+                  >
+                    {isSubmitting ? "Submitting..." : "Submit Scores"}
+                  </button>
+                </div>
+              </>
             )}
             <div className="space-y-4">
               <div className="flex flex-col gap-2  text-black">
