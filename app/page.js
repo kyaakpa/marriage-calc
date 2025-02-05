@@ -12,7 +12,9 @@ import {
   RotateCcw,
   Share2,
   Save,
-  Share,
+  House,
+  User,
+  Strikethrough,
 } from "lucide-react";
 
 export default function Home() {
@@ -116,24 +118,46 @@ export default function Home() {
 
   useEffect(() => {
     const savedGames = localStorage.getItem("savedGames");
+    console.log(savedGames);
+
     if (savedGames) {
       setSavedGamesMetadata(JSON.parse(savedGames));
     }
   }, []);
 
+  // First, modify the handleSaveGame function to include total points:
   const handleSaveGame = () => {
     if (!saveGameName.trim()) {
       setError("Please enter a name for your saved game");
       return;
     }
 
+    // Calculate total points for each player
+    const playerTotals = {};
+    players.forEach((player) => {
+      playerTotals[player.id] = games.reduce(
+        (sum, game) => sum + (game.scores[player.id] || 0),
+        0
+      );
+    });
+
     const gameData = {
       id: Date.now(),
       name: saveGameName,
-      date: new Date().toISOString(),
+      date: (() => {
+        const now = new Date();
+        const day = String(now.getDate()).padStart(2, "0");
+        const month = String(now.getMonth() + 1).padStart(2, "0");
+        const year = String(now.getFullYear()).slice(2);
+        const hours = String(now.getHours()).padStart(2, "0");
+        const minutes = String(now.getMinutes()).padStart(2, "0");
+        const seconds = String(now.getSeconds()).padStart(2, "0");
+        return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+      })(),
       players,
       games,
       startGame,
+      playerTotals, // Add the total points
     };
 
     const existingSavedGames = JSON.parse(
@@ -280,6 +304,10 @@ export default function Home() {
       players.map((p) => {
         if (p.id === playerId) {
           const newJokerSeen = !p.jokerSeen;
+          // If player is becoming unseen and is the selected winner, clear winner
+          if (!newJokerSeen && selectedWinner === playerId) {
+            setSelectedWinner(null);
+          }
           if (newJokerSeen) {
             setTimeout(() => {
               document.querySelector(`#points-input-${playerId}`)?.focus();
@@ -470,7 +498,7 @@ export default function Home() {
       setSelectedWinner(null);
       setError("");
       setIsSubmitting(false);
-    }, 300);
+    }, 1);
   };
 
   //dismiss round
@@ -514,12 +542,10 @@ export default function Home() {
     }
   };
 
-  console.log(calculatedScores);
-
   return (
     <div
       className={`min-h-screen ${
-        darkMode ? "bg-gray-900 text-white" : "bg-neutral-50"
+        darkMode ? "bg-gray-900 text-white" : "bg-blue-100"
       }`}
     >
       {typeof window !== "undefined" && showSaveModal && (
@@ -562,7 +588,7 @@ export default function Home() {
       >
         {!startGame ? (
           <>
-            <div className="relative font-mono h-screen bg-slate-800 text-white p-3 pt-14">
+            <div className="relative font-mono min-h-screen bg-slate-800 text-white p-3 pt-14">
               <h1
                 className="text-6xl font-bold bg-gradient-to-r from-yellow-200 via-yellow-400 to-yellow-500 bg-clip-text text-transparent animate-scanline mb-8"
                 style={{
@@ -587,9 +613,7 @@ export default function Home() {
            `}</style>
 
               <div className="border border-green-500 p-6">
-                <h2 className="text-xl mb-6 animate-pulse">
-                  {`>`} Add Players_
-                </h2>
+                <h2 className="text-xl mb-6 animate-pulse">Add Players</h2>
 
                 <div className="space-y-4">
                   {players.map((player) => (
@@ -626,7 +650,7 @@ export default function Home() {
                       onClick={addPlayer}
                       className="w-full px-4 py-2 border border-green-500 text-green-500 hover:bg-green-500 hover:text-black transition-colors flex items-center justify-center gap-2"
                     >
-                      <Plus size={18} /> ADD_PLAYER.exe
+                      <Plus size={18} /> ADD PLAYER
                     </button>
                   )}
 
@@ -647,42 +671,71 @@ export default function Home() {
                     }
                     className="w-full px-4 py-2 border border-yellow-400 text-yellow-400 hover:bg-yellow-400 hover:text-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    <Play size={18} /> START_GAME.bat
+                    <Play size={18} /> START GAME
                   </button>
                 </div>
               </div>
               {savedGamesMetadata.length > 0 && (
                 <div
                   className={`mt-4 p-4 border ${
-                    darkMode ? "border-gray-700" : "border-gray-200"
+                    darkMode ? "border-gray-700" : "border-neutral-400"
                   }`}
                 >
-                  <h3 className="font-semibold mb-2">Saved Games</h3>
+                  <h3 className="font-semibold pb-2 pl-2">Saved Games</h3>
                   <div className="space-y-2">
                     {savedGamesMetadata.map((game) => (
                       <div
                         key={game.id}
-                        className="flex justify-between items-center p-2"
+                        className="flex flex-col justify-between p-2 border-b border-neutral-400"
                       >
-                        <div>
-                          <div className="font-medium">{game.name}</div>
-                          <div className="text-sm text-gray-500">
-                            {new Date(game.date).toLocaleDateString()}
-                          </div>
+                        <div className="text-sm  flex justify-between items-center pb-2">
+                          <span className="text-base">{game.name}</span>
+                          <span className="opacity-80">{game.date}</span>
                         </div>
-                        <div className="flex gap-3 text-sm">
-                          <button
-                            onClick={() => loadSavedGame(game)}
-                            className="px-4 py-2 border border-blue-500  text-white  hover:bg-blue-600"
-                          >
-                            Load
-                          </button>
-                          <button
-                            onClick={() => deleteSavedGame(game.id)}
-                            className="px-4 py-2 border border-red-500  text-white  hover:bg-red-600"
-                          >
-                            Delete
-                          </button>
+
+                        <div className="flex justify-between items-center">
+                          <div className="text-sm w-full pr-3">
+                            {Object.entries(game.playerTotals || {}).map(
+                              ([playerId, total]) => {
+                                const player = game.players.find(
+                                  (p) => p.id === parseInt(playerId)
+                                );
+                                return player ? (
+                                  <div key={playerId}>
+                                    <div className="flex justify-between pr-4 border border-neutral-500">
+                                      <div className="flex flex-col">
+                                        {player.name}
+                                      </div>
+
+                                      <span
+                                        className={
+                                          total >= 0
+                                            ? "text-green-600"
+                                            : "text-red-600"
+                                        }
+                                      >
+                                        {total}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ) : null;
+                              }
+                            )}
+                          </div>
+                          <div className="flex flex-col gap-3 text-sm">
+                            <button
+                              onClick={() => loadSavedGame(game)}
+                              className="px-4 py-2 border border-blue-500 text-white hover:bg-blue-600"
+                            >
+                              Load
+                            </button>
+                            <button
+                              onClick={() => deleteSavedGame(game.id)}
+                              className="px-4 py-2 border border-red-500 text-white hover:bg-red-600"
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -692,115 +745,7 @@ export default function Home() {
             </div>
           </>
         ) : (
-          //     <div className="p-8 h-screen bg-zinc-950 text-white">
-          //       <h1
-          //         className="text-6xl font-bold bg-gradient-to-r from-yellow-200 via-yellow-400 to-yellow-600 bg-clip-text text-transparent animate-shimmer"
-          //         style={{
-          //           textShadow: "0 0 10px rgba(234, 179, 8, 0.5)",
-          //           WebkitBackgroundClip: "text",
-          //           backgroundSize: "200% 100%",
-          //           animation: "shimmer 2s linear infinite",
-          //         }}
-          //       >
-          //         Marriage Point Calculator
-          //       </h1>
-          //       <style>{`
-          //   @keyframes shimmer {
-          //     0% {
-          //       background-position: 200% 0;
-          //     }
-          //     100% {
-          //       background-position: -200% 0;
-          //     }
-          //   }
-          // `}</style>
-          //       <h2 className="text-xl font-semibold mb-4">Add Players</h2>
-          //       <div className="space-y-4">
-          //         {players.map((player) => (
-          //           <div key={player.id} className="flex items-center gap-4">
-          //             <label htmlFor={`player${player.id}`} className="w-20">
-          //               Player {player.id}
-          //             </label>
-          //             <input
-          //               type="text"
-          //               id={`player${player.id}`}
-          //               value={player.name}
-          //               onChange={(e) =>
-          //                 handleNameChange(player.id, e.target.value)
-          //               }
-          //               placeholder={`Enter player ${player.id} name`}
-          //               className="flex-1 p-2 border rounded"
-          //             />
-          //             {players.length > 1 && (
-          //               <button
-          //                 onClick={() => removePlayer(player.id)}
-          //                 className="px-3 py-1 text-red-600 hover:bg-red-50 rounded"
-          //               >
-          //                 <X size={20} />
-          //               </button>
-          //             )}
-          //           </div>
-          //         ))}
-          //       </div>
-          //       <div className="flex flex-col gap-2 mt-4">
-          //         {players.length < 8 && (
-          //           <button
-          //             onClick={addPlayer}
-          //             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 flex items-center justify-center gap-2"
-          //           >
-          //             <Plus size={18} /> Add Player
-          //           </button>
-          //         )}
-          //         <button
-          //           onClick={() => {
-          //             setStartGame(true);
-          //             localStorage.setItem(
-          //               "marriageGameState",
-          //               JSON.stringify(true)
-          //             );
-          //             localStorage.setItem(
-          //               "marriageGamePlayers",
-          //               JSON.stringify(players)
-          //             );
-          //           }}
-          //           className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 flex items-center justify-center gap-2"
-          //           disabled={players.length < 2 || players.some((p) => !p.name)}
-          //         >
-          //           <Play size={18} /> Start Game
-          //         </button>
-          //         {savedGamesMetadata.length > 0 && (
-          //           <div
-          //             className={`mt-4 p-4 border rounded-lg ${
-          //               darkMode ? "border-gray-700" : "border-gray-200"
-          //             }`}
-          //           >
-          //             <h3 className="font-semibold mb-2">Saved Games</h3>
-          //             <div className="space-y-2">
-          //               {savedGamesMetadata.map((game) => (
-          //                 <div
-          //                   key={game.id}
-          //                   className="flex justify-between items-center p-2 bg-gray-50 rounded"
-          //                 >
-          //                   <div>
-          //                     <div className="font-medium">{game.name}</div>
-          //                     <div className="text-sm text-gray-500">
-          //                       {new Date(game.date).toLocaleDateString()}
-          //                     </div>
-          //                   </div>
-          //                   <button
-          //                     onClick={() => loadSavedGame(game)}
-          //                     className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
-          //                   >
-          //                     Load
-          //                   </button>
-          //                 </div>
-          //               ))}
-          //             </div>
-          //           </div>
-          //         )}
-          //       </div>
-          //     </div>
-          <div className="flex flex-col justify-between pb-16  lg:p-6 rounded-xl lg:shadow-sm">
+          <div className="flex flex-col justify-between pb-16  lg:p-6 rounded-xl lg:shadow-sm bg-blue-100">
             {games.length < 1 && (
               <div className="p-4 mb-6">
                 <div className="p-4 bg-gray-200 rounded-lg py-8">
@@ -860,7 +805,132 @@ export default function Home() {
                 </div>
               </div>
             )}
+            <div className="space-y-4">
+              <div className="flex flex-col gap-2 ">
+                {players.map((player) => (
+                  <div
+                    key={player.id}
+                    className={`p-2 md:px-3 md:pt-2 flex justify-between items-center md:rounded-xl md:border-1 md:shadow-md border-dotted ${
+                      darkMode
+                        ? player.isWinner
+                          ? "border-green-500 bg-green-900 bg-opacity-20"
+                          : player.jokerSeen
+                          ? "border-blue-500 bg-blue-900 bg-opacity-20"
+                          : "border-gray-700 bg-gray-800"
+                        : player.isWinner
+                        ? "border-green-500 bg-gradient-to-br from-green-50 to-green-100"
+                        : player.jokerSeen
+                        ? "border-blue-500 bg-gradient-to-br from-blue-50 to-blue-100"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
+                    <div
+                      className={`font-semibold rounded-lg flex items-end text-sm overflow-x-hidden text-ellipsis ${
+                        selectedWinner === player.id
+                          ? "bg-green-500 text-neutral-50"
+                          : "bg-blue-200"
+                      } text-neutral-800 p-2 w-[90px] max-w-[90px]`}
+                    >
+                      <User size={20} />
 
+                      <span className="">{player.name.toUpperCase()}</span>
+                    </div>
+
+                    <div className="flex gap-2 max-sm:w-30">
+                      {player.jokerSeen && (
+                        <>
+                          <input
+                            id={`points-input-${player.id}`}
+                            type="number"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={player.points === 0 ? "" : player.points}
+                            onChange={(e) => {
+                              const newPoints = parseInt(e.target.value) || 0;
+                              setPlayers(
+                                players.map((p) =>
+                                  p.id === player.id
+                                    ? { ...p, points: newPoints }
+                                    : p
+                                )
+                              );
+                            }}
+                            className={`w-12 text-xl text-center px-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 ${
+                              darkMode
+                                ? "bg-gray-800 border-gray-700 text-white"
+                                : "bg-white border-gray-200"
+                            }`}
+                            aria-placeholder="enter points"
+                          />
+                        </>
+                      )}
+                      <button
+                        onClick={() => handleJokerSeen(player.id)}
+                        className={`w-full px-2 py-2 rounded-lg text-sm font-medium transition-colors duration-300 ease-in-out flex items-center justify-center gap-2 ${
+                          darkMode
+                            ? player.jokerSeen
+                              ? "bg-blue-600 text-white hover:bg-blue-700"
+                              : "bg-red-900 bg-opacity-20 text-red-300 hover:bg-opacity-30"
+                            : player.jokerSeen
+                            ? "bg-blue-500 text-white "
+                            : "text-blue-500 bg-white "
+                        }`}
+                      >
+                        {player.jokerSeen ? (
+                          <>
+                            <div className="flex flex-col items-center">
+                              <Eye size={18} />
+                              Seen
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex flex-col items-center">
+                              <EyeOff size={18} />
+                              <s>Seen</s>
+                            </div>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleWinnerSelect(player.id)}
+                        disabled={!player.jokerSeen}
+                        className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-center gap-1 ${
+                          player.id === selectedWinner
+                            ? "bg-green-500 text-white shadow-sm"
+                            : player.jokerSeen
+                            ? "bg-white text-green-600"
+                            : "bg-white text-green-600 cursor-not-allowed"
+                        }`}
+                      >
+                        {player.id === selectedWinner ? (
+                          <>
+                            <Trophy size={18} /> Winner
+                          </>
+                        ) : (
+                          <>
+                            <Trophy size={18} /> Select Winner
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-center gap-4 py-4">
+              <button
+                onClick={submitScores}
+                disabled={isSubmitting || !selectedWinner}
+                className={`px-4 py-2 text-white rounded-lg font-medium transition-colors duration-200 ${
+                  isSubmitting || !selectedWinner
+                    ? "bg-neutral-800 text-white cursor-not-allowed"
+                    : "bg-green-500 hover:bg-green-300 drop-shadow-lg"
+                }`}
+              >
+                {isSubmitting ? "Submitting..." : "Submit Scores"}
+              </button>
+            </div>
             {games.length > 0 && (
               <div
                 className={`mb-8 transition-colors duration-200 ${
@@ -869,43 +939,23 @@ export default function Home() {
                     : "bg-white lg:shadow-sm border-gray-200"
                 } lg:rounded-xl overflow-hidden`}
               >
-                {lastSaved && (
-                  <div className="fixed top-1 right-2">
-                    <span className="text-xs text-gray-500">
-                      Auto-saved: {new Date(lastSaved).toLocaleTimeString()}
-                    </span>
-                  </div>
-                )}
                 <div
-                  className={`flex justify-between text-xl font-semibold px-4 py-8 border-b ${
+                  className={`flex justify-between text-xl font-semibold px-4 py-2 border-b ${
                     darkMode
                       ? "bg-gray-900 border-gray-700"
                       : "bg-neutral-900 text-white border-neutral-800"
                   }`}
                 >
-                  <span className="flex items-end font-bold text-2xl">
-                    Game History
-                  </span>
-                  <div className="flex">
-                    <button
-                      onClick={shareScoreboard}
-                      className="mr-4 px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-full flex items-center gap-2 text-base"
-                    >
-                      <Share2 size={18} strokeWidth={2} />
-                    </button>
-                    <button
-                      onClick={() => setShowSaveModal(true)}
-                      className="mr-4 px-4 py-2 bg-neutral-900 hover:bg-neutral-800 rounded-full"
-                    >
-                      <Save size={19} strokeWidth={2} />
-                    </button>
-                  </div>
+                  <h2 className="flex items-end font-bold text-2xl">
+                    Game Logs
+                  </h2>
                 </div>
-                <div className="overflow-x-auto " ref={scoreboardRef}>
+                {/* Replace the existing table with this updated version */}
+                <div className="overflow-x-auto" ref={scoreboardRef}>
                   <table className="w-full text-sm border-collapse bg-neutral-200">
                     <thead>
-                      <tr className="bg-neutral-900 border border-black  text-white">
-                        <th className=" text-center font-normal py-4">No.</th>
+                      <tr className="bg-neutral-900 border border-black text-white">
+                        <th className="text-center font-normal py-4">No.</th>
                         {players.map((player) => (
                           <th
                             key={player.id}
@@ -921,10 +971,31 @@ export default function Home() {
                       </tr>
                     </thead>
                     <tbody>
-                      {games.map((game) => (
+                      {/* Totals row at the top */}
+                      <tr className="bg-gray-50 font-bold border-neutral-400">
+                        <td className="border border-gray-300 p-2 text-center">
+                          Total
+                        </td>
+                        {players.map((player) => (
+                          <td
+                            key={player.id}
+                            className="border border-gray-300 p-2 text-center"
+                          >
+                            {games.reduce(
+                              (sum, game) =>
+                                sum + (game.scores[player.id] || 0),
+                              0
+                            )}
+                          </td>
+                        ))}
+                        <td className="border border-gray-300 p-2"></td>
+                      </tr>
+
+                      {/* Game records in reverse order */}
+                      {[...games].reverse().map((game) => (
                         <tr
                           key={game.gameNo}
-                          className="hover:bg-gray-50 transition-colors font-semibold"
+                          className="hover:bg-gray-50 transition-colors"
                         >
                           <td className="border border-gray-300 p-2 text-center">
                             {game.gameNo}
@@ -952,229 +1023,46 @@ export default function Home() {
                           </td>
                         </tr>
                       ))}
-                      <tr className="bg-gray-50 font-bold">
-                        <td className="border border-gray-300 p-2 text-center">
-                          Total
-                        </td>
-                        {players.map((player) => (
-                          <td
-                            key={player.id}
-                            className="border border-gray-300 p-2 text-center"
-                          >
-                            {games.reduce(
-                              (sum, game) =>
-                                sum + (game.scores[player.id] || 0),
-                              0
-                            )}
-                          </td>
-                        ))}
-                        <td className="border border-gray-300 p-2"></td>
-                      </tr>
                     </tbody>
                   </table>
                 </div>
               </div>
             )}
 
-            {selectedWinner && (
-              <>
-                {isCalculating && calculatedScores.length > 0 && (
-                  <div className="space-y-2 p-3">
-                    <h3 className="text-lg font-semibold mb-4">
-                      Calculated Scores
-                    </h3>
-                  </div>
-                )}
-                {isCalculating &&
-                  calculatedScores.length > 0 &&
-                  calculatedScores.slice(0, -1).map((score) => (
-                    <div
-                      key={score.id}
-                      className={`p-3 rounded-lg ${
-                        score.isWinner
-                          ? "bg-green-100"
-                          : score.jokerSeen
-                          ? "bg-blue-50"
-                          : "bg-gray-50"
-                      }`}
-                    >
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium">
-                          {score.name} {score.isWinner && "👑"}
-                        </span>
-                        <span
-                          className={`font-bold ${
-                            score.calculatedScore >= 0
-                              ? "text-green-600"
-                              : "text-red-600"
-                          }`}
-                        >
-                          {score.calculatedScore}
-                        </span>
-                      </div>
-                      {score.jokerSeen && (
-                        <div className="text-sm text-gray-600 mt-1">
-                          Maal: {score.currentPoints}
-                        </div>
-                      )}
-                      {!score.jokerSeen && (
-                        <div className="text-sm text-red-600 mt-1">Unseen</div>
-                      )}
-                    </div>
-                  ))}
-                {isCalculating && calculatedScores.length > 0 && (
-                  <div className="mt-4 pt-2 border-t border-gray-200 p-3 mb-4">
-                    <div className="flex justify-between items-center font-medium">
-                      <span>Total Maal:</span>
-                      <span>
-                        {
-                          calculatedScores[calculatedScores.length - 1]
-                            .totalMaal
-                        }
-                      </span>
-                    </div>
-                  </div>
-                )}
-                <div className="flex justify-center gap-4 pb-4">
-                  <button
-                    onClick={calculateScores}
-                    disabled={isCalculating}
-                    className={`px-4 py-2 text-white rounded-lg font-medium transition-colors duration-200 ${
-                      isSubmitting
-                        ? "bg-gray-400 cursor-not-allowed"
-                        : "bg-neutral-900 hover:bg-neutral-500 drop-shadow-lg"
-                    }`}
-                  >
-                    Calculate
-                  </button>
-                  <button
-                    onClick={submitScores}
-                    disabled={isSubmitting}
-                    className={`px-4 py-2 text-white rounded-lg font-medium transition-colors duration-200 ${
-                      isSubmitting
-                        ? "bg-gray-400 cursor-not-allowed"
-                        : "bg-emerald-500 hover:bg-green-300 drop-shadow-lg"
-                    }`}
-                  >
-                    {isSubmitting ? "Submitting..." : "Submit Scores"}
-                  </button>
-                </div>
-              </>
-            )}
-            <div className="space-y-4">
-              <div className="flex flex-col gap-2  text-black">
-                {players.map((player) => (
-                  <div
-                    key={player.id}
-                    className={`p-2 md:px-3 md:pt-2 flex justify-between items-center md:rounded-xl md:border-1 md:shadow-md border-dotted ${
-                      darkMode
-                        ? player.isWinner
-                          ? "border-green-500 bg-green-900 bg-opacity-20"
-                          : player.jokerSeen
-                          ? "border-blue-500 bg-blue-900 bg-opacity-20"
-                          : "border-gray-700 bg-gray-800"
-                        : player.isWinner
-                        ? "border-green-500 bg-gradient-to-br from-green-50 to-green-100"
-                        : player.jokerSeen
-                        ? "border-blue-500 bg-gradient-to-br from-blue-50 to-blue-100"
-                        : "border-gray-200 hover:border-gray-300"
-                    }`}
-                  >
-                    <div className="font-semibold mb-2 lg:w-20 w-14 text-base">
-                      {player.name.toLowerCase()}
-                    </div>
-                    <div className="flex flex-col ">
-                      {player.jokerSeen && (
-                        <>
-                          <input
-                            id={`points-input-${player.id}`}
-                            type="number"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            value={player.points === 0 ? "" : player.points}
-                            onChange={(e) => {
-                              const newPoints = parseInt(e.target.value) || 0;
-                              setPlayers(
-                                players.map((p) =>
-                                  p.id === player.id
-                                    ? { ...p, points: newPoints }
-                                    : p
-                                )
-                              );
-                            }}
-                            className={`max-w w-10 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 ${
-                              darkMode
-                                ? "bg-gray-800 border-gray-700 text-white"
-                                : "bg-white border-gray-200"
-                            }`}
-                            aria-placeholder="enter points"
-                          />
-                          <label className="text-neutral-600 text-sm">
-                            Points
-                          </label>
-                        </>
-                      )}
-                    </div>
+            {/* Add this fixed bottom navigation */}
+            <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 text-white border-t border-neutral-800">
+              <div className="max-w-6xl flex justify-evenly items-center p-3">
+                <button
+                  onClick={shareScoreboard}
+                  className="px-4 py-2 hover:bg-neutral-800 rounded-lg transition-colors"
+                  title="Share Scoreboard"
+                >
+                  <Share2 size={20} strokeWidth={2} />
+                </button>
 
-                    <div className="space-y-1 flex gap-3 w-1/2">
-                      <button
-                        onClick={() => handleJokerSeen(player.id)}
-                        className={`w-full px-2 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-center gap-2 ${
-                          darkMode
-                            ? player.jokerSeen
-                              ? "bg-blue-600 text-white hover:bg-blue-700"
-                              : "bg-red-900 bg-opacity-20 text-red-300 hover:bg-opacity-30"
-                            : player.jokerSeen
-                            ? "bg-blue-500 text-white shadow-sm hover:bg-blue-600"
-                            : "bg-red-100 text-red-900 hover:bg-red-200"
-                        }`}
-                      >
-                        {player.jokerSeen ? (
-                          <>
-                            <Eye size={18} /> Seen
-                          </>
-                        ) : (
-                          <>
-                            <EyeOff size={18} /> Unseen
-                          </>
-                        )}
-                      </button>
-                      <button
-                        onClick={() => handleWinnerSelect(player.id)}
-                        disabled={!player.jokerSeen}
-                        className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-center gap-1 ${
-                          player.id === selectedWinner
-                            ? "bg-green-500 text-white shadow-sm"
-                            : player.jokerSeen
-                            ? "bg-gray-100 hover:bg-gray-200"
-                            : "bg-gray-100 opacity-50 cursor-not-allowed"
-                        }`}
-                      >
-                        {player.id === selectedWinner ? (
-                          <>
-                            <Trophy size={18} /> Winner
-                          </>
-                        ) : (
-                          <>
-                            <Trophy size={18} /> Select Winner
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                <button
+                  onClick={() => {
+                    if (window.confirm("Do you want to start new game? ")) {
+                      resetGame();
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-500 rounded-full transition-colors"
+                >
+                  <House size={20} strokeWidth={2} />
+                  <span className="hidden sm:inline">Home</span>
+                </button>
+                <button
+                  onClick={() => setShowSaveModal(true)}
+                  className="px-4 py-2 hover:bg-neutral-800 rounded-lg transition-colors"
+                  title="Save Game"
+                >
+                  <Save size={20} strokeWidth={2} />
+                </button>
               </div>
             </div>
-            <div className="mt-16">
-              <button
-                onClick={resetGame}
-                className={`py-4  transition-colors duration-200 font-bold fixed bottom-0 left-0 right-0 md:static md:mt-8
-   
-       bg-red-600 hover:bg-rose-600 active:bg-red-400 text-white flex items-center justify-center gap-2`}
-              >
-                <RotateCcw size={18} strokeWidth={2} /> Reset Entire Game
-              </button>
-            </div>
+
+            {/* Add padding at the bottom of the main content to prevent overlap */}
+            <div className="pb-20"></div>
           </div>
         )}
       </div>
