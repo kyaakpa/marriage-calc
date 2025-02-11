@@ -5,16 +5,17 @@ import { supabase } from "@/app/lib/supabase";
 import { RefreshCw } from "lucide-react";
 import { useParams } from "next/navigation";
 
-export default function GameViewer({ id }) {
+export default function GameViewer() {
   const [gameData, setGameData] = useState(null);
-  const params = useParams();
-  const id = params?.id;
+  const { id } = useParams(); // Destructure id directly from useParams
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [updateCount, setUpdateCount] = useState(0);
 
   const fetchGameData = async () => {
+    if (!id) return;
+
     setIsRefreshing(true);
     try {
       const { data, error } = await supabase
@@ -78,7 +79,7 @@ export default function GameViewer({ id }) {
       subscription.unsubscribe();
       clearInterval(pollInterval);
     };
-  }, [id]);
+  }, [id]); // Added id to dependency array
 
   if (error) {
     return (
@@ -147,7 +148,11 @@ export default function GameViewer({ id }) {
                   />
                   <span className="text-gray-600">Live</span>
                 </div>
-
+                {lastUpdate && (
+                  <span className="text-gray-500 text-xs">
+                    Last updated: {lastUpdate}
+                  </span>
+                )}
                 {updateCount > 0 && (
                   <span className="text-gray-500 text-xs">
                     {updateCount} updates received
@@ -172,14 +177,31 @@ export default function GameViewer({ id }) {
             <table className="w-full border-collapse">
               <thead>
                 <tr className="bg-gray-50">
-                  <th className="p-2 text-left border border-gray-200 font-medium">
+                  <th
+                    rowSpan="2"
+                    className="p-2 text-left border border-gray-200 font-medium"
+                  >
                     Player
                   </th>
-                  <th className="p-2 text-right border border-gray-200 font-medium">
+                  <th
+                    rowSpan="2"
+                    className="p-2 text-right border border-gray-200 font-medium"
+                  >
                     Total
                   </th>
-                  <th className="p-2 text-right border border-gray-200 font-medium">
+                  <th
+                    colSpan="2"
+                    className="p-2 text-center border border-gray-200 font-medium"
+                  >
                     Last Round
+                  </th>
+                </tr>
+                <tr className="bg-gray-50">
+                  <th className="p-2 text-right border border-gray-200 font-medium">
+                    Scores
+                  </th>
+                  <th className="p-2 text-right border border-gray-200 font-medium">
+                    Points
                   </th>
                 </tr>
               </thead>
@@ -201,6 +223,10 @@ export default function GameViewer({ id }) {
                     <td className="p-2 text-right border border-gray-200">
                       {games.length > 0 &&
                         games[games.length - 1].scores[player.id]}
+                    </td>
+                    <td className="p-2 text-right border border-gray-200">
+                      {games.length > 0 &&
+                        games[games.length - 1].roundPoints[player.id]}
                     </td>
                   </tr>
                 ))}
@@ -239,7 +265,7 @@ export default function GameViewer({ id }) {
                       <td
                         key={player.id}
                         className={`p-2 text-center border border-gray-200 ${
-                          game.winner === player.id ? "bg-green-50" : ""
+                          game.winner === player.id ? "bg-green-100" : ""
                         }`}
                       >
                         {game.scores[player.id]}
