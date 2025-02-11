@@ -1,6 +1,5 @@
 "use client";
 
-import { toPng } from "html-to-image";
 import { useState, useEffect, useRef } from "react";
 import {
   X,
@@ -9,15 +8,17 @@ import {
   Trophy,
   Eye,
   EyeOff,
-  RotateCcw,
   Share2,
   Save,
   House,
   User,
-  Strikethrough,
 } from "lucide-react";
+import { supabase } from "./lib/supabase";
 
 export default function Home() {
+  const [gameId, setGameId] = useState(null);
+  const [shareUrl, setShareUrl] = useState("");
+  const [copied, setCopied] = useState(false);
   const scoreboardRef = useRef(null);
   const [savedGamesMetadata, setSavedGamesMetadata] = useState([]);
   const [saveGameName, setSaveGameName] = useState("");
@@ -42,6 +43,42 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
+  useEffect(() => {
+    if (startGame) {
+      // Check if we have an existing game ID in localStorage
+      const savedGameId = localStorage.getItem("currentGameId");
+
+      if (savedGameId) {
+        // Resume existing game
+        setGameId(savedGameId);
+        setShareUrl(`${window.location.origin}/watch/id=${savedGameId}`);
+      } else if (!gameId) {
+        // Create new game ID
+        const newGameId = crypto.randomUUID();
+        setGameId(newGameId);
+        setShareUrl(`${window.location.origin}/watch/${newGameId}`);
+
+        // Save to localStorage
+        localStorage.setItem("currentGameId", newGameId);
+
+        // Create game in Supabase
+        const createGame = async () => {
+          const { error } = await supabase.from("games").insert([
+            {
+              id: newGameId,
+              players,
+              games: [],
+              last_update: new Date().toISOString(),
+            },
+          ]);
+
+          if (error) console.error("Error creating game:", error);
+        };
+
+        createGame();
+      }
+    }
+  }, [startGame]);
 
   useEffect(() => {
     const isDark = localStorage.getItem("darkMode") === "true";
@@ -118,7 +155,6 @@ export default function Home() {
 
   useEffect(() => {
     const savedGames = localStorage.getItem("savedGames");
-    console.log(savedGames);
 
     if (savedGames) {
       setSavedGamesMetadata(JSON.parse(savedGames));
@@ -241,7 +277,10 @@ export default function Home() {
     localStorage.removeItem("marriageGamePlayers");
     localStorage.removeItem("marriageGameHistory");
     localStorage.removeItem("marriageGameState");
-    localStorage.removeItem("marriageGameAutoSave"); // Clear auto-save
+    localStorage.removeItem("marriageGameAutoSave");
+    localStorage.removeItem("currentGameId"); // Add this line
+    setGameId(null);
+    setShareUrl("");
     setPlayers([
       {
         id: 1,
@@ -385,8 +424,8 @@ export default function Home() {
     setCalculatedScores([...scores, { totalMaal }]);
   };
 
-  const submitScores = () => {
-    setIsCalculating(false);
+  // Modify your submitScores function to be async
+  const submitScores = async () => {
     if (!selectedWinner) {
       setError("Please select a winner first!");
       return;
@@ -399,93 +438,107 @@ export default function Home() {
 
     setIsSubmitting(true);
 
-    const playersWithRoundPoints = players.map((player) => ({
-      ...player,
-      roundPoints: player.points,
-    }));
+    try {
+      const playersWithRoundPoints = players.map((player) => ({
+        ...player,
+        roundPoints: player.points,
+      }));
 
-    // Calculate total maal (sum of points from seen players only)
-    const totalMaal = playersWithRoundPoints.reduce((sum, player) => {
-      return player.jokerSeen ? sum + player.points : sum;
-    }, 0);
+      // Calculate total maal
+      const totalMaal = playersWithRoundPoints.reduce((sum, player) => {
+        return player.jokerSeen ? sum + player.points : sum;
+      }, 0);
 
-    const numPlayers = playersWithRoundPoints.length;
+      const numPlayers = playersWithRoundPoints.length;
 
-    // First calculate points for non-winner players
-    let nonWinnerPoints = [];
-    playersWithRoundPoints.forEach((p) => {
-      if (p.id !== selectedWinner) {
-        let points;
-        if (!p.jokerSeen) {
-          // Unseen player: -total maal - 10
-          points = -totalMaal - 10;
-        } else {
-          // Seen player: (points × number of players) - total maal - 3
-          points = p.points * numPlayers - totalMaal - 3;
+      // Calculate points for non-winner players
+      let nonWinnerPoints = [];
+      playersWithRoundPoints.forEach((p) => {
+        if (p.id !== selectedWinner) {
+          let points;
+          if (!p.jokerSeen) {
+            points = -totalMaal - 10;
+          } else {
+            points = p.points * numPlayers - totalMaal - 3;
+          }
+          nonWinnerPoints.push(points);
         }
-        nonWinnerPoints.push(points);
+      });
+
+      // Winner's points
+      const winnerPoints = -nonWinnerPoints.reduce(
+        (sum, points) => sum + points,
+        0
+      );
+
+      // Create final updated players array
+      const updatedPlayers = playersWithRoundPoints.map((p) => {
+        if (p.id === selectedWinner) {
+          return {
+            ...p,
+            isWinner: true,
+            points: winnerPoints,
+          };
+        } else if (!p.jokerSeen) {
+          return {
+            ...p,
+            isWinner: false,
+            points: -totalMaal - 10,
+          };
+        } else {
+          return {
+            ...p,
+            isWinner: false,
+            points: p.points * numPlayers - totalMaal - 3,
+          };
+        }
+      });
+
+      const updatedGames = [
+        ...games,
+        {
+          gameNo: games.length + 1,
+          scores: updatedPlayers.reduce(
+            (acc, player) => ({
+              ...acc,
+              [player.id]: player.points,
+            }),
+            {}
+          ),
+          roundPoints: updatedPlayers.reduce(
+            (acc, player) => ({
+              ...acc,
+              [player.id]: player.roundPoints,
+            }),
+            {}
+          ),
+          winner: selectedWinner,
+        },
+      ];
+
+      // Update Supabase
+      if (gameId) {
+        const { error } = await supabase
+          .from("games")
+          .update({
+            players: updatedPlayers,
+            games: updatedGames,
+            last_update: new Date().toISOString(),
+          })
+          .eq("id", gameId);
+
+        if (error) {
+          console.error("Error updating game:", error);
+          setError("Failed to update game");
+          setIsSubmitting(false);
+          return;
+        }
       }
-    });
 
-    // Winner's points are negative sum of all other players' points
-    const winnerPoints = -nonWinnerPoints.reduce(
-      (sum, points) => sum + points,
-      0
-    );
+      setGames(updatedGames);
+      localStorage.setItem("marriageGameHistory", JSON.stringify(updatedGames));
 
-    // Create final updated players array
-    const updatedPlayers = playersWithRoundPoints.map((p) => {
-      if (p.id === selectedWinner) {
-        return {
-          ...p,
-          isWinner: true,
-          points: winnerPoints,
-        };
-      } else if (!p.jokerSeen) {
-        return {
-          ...p,
-          isWinner: false,
-          points: -totalMaal - 10,
-        };
-      } else {
-        return {
-          ...p,
-          isWinner: false,
-          points: p.points * numPlayers - totalMaal - 3,
-        };
-      }
-    });
-
-    setPlayers(updatedPlayers);
-
-    // Save game history with roundPoints
-    const updatedGames = [
-      ...games,
-      {
-        gameNo: games.length + 1,
-        scores: updatedPlayers.reduce(
-          (acc, player) => ({
-            ...acc,
-            [player.id]: player.points,
-          }),
-          {}
-        ),
-        roundPoints: updatedPlayers.reduce(
-          (acc, player) => ({
-            ...acc,
-            [player.id]: player.roundPoints,
-          }),
-          {}
-        ),
-        winner: selectedWinner,
-      },
-    ];
-
-    setGames(updatedGames);
-    localStorage.setItem("marriageGameHistory", JSON.stringify(updatedGames));
-
-    // Reset for next round after delay
-    setTimeout(() => {
+      // Reset for next round
       setPlayers(
         updatedPlayers.map((player) => ({
           ...player,
@@ -497,8 +550,23 @@ export default function Home() {
       );
       setSelectedWinner(null);
       setError("");
+    } catch (err) {
+      console.error("Error in submitScores:", err);
+      setError("An error occurred while submitting scores");
+    } finally {
       setIsSubmitting(false);
-    }, 1);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+      setError("Failed to copy link");
+    }
   };
 
   //dismiss round
@@ -748,7 +816,7 @@ export default function Home() {
           <div className="flex flex-col justify-between pb-16  lg:p-6 rounded-xl lg:shadow-sm bg-blue-100">
             {games.length < 1 && (
               <div className="p-4 mb-6">
-                <div className="p-4 bg-gray-200 rounded-lg py-8">
+                <div className="p-4 bg-white rounded-lg py-8">
                   <h2 className="text-lg mb-4 font-mono">*** INSTRUCTIONS</h2>
                   <div className="space-y-4 text-sm">
                     <p>
@@ -1025,6 +1093,34 @@ export default function Home() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </div>
+            )}
+
+            {startGame && gameId && (
+              <div className="mb-6 p-4 bg-white rounded-lg shadow-sm">
+                <h2 className="text-xl mb-4">Share Live Scoreboard</h2>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={shareUrl}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  />
+                  <button
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(shareUrl);
+                        setError("Link copied to clipboard!");
+                        setTimeout(() => setError(""), 2000);
+                      } catch (err) {
+                        setError("Failed to copy link");
+                      }
+                    }}
+                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                  >
+                    Copy Link
+                  </button>
                 </div>
               </div>
             )}
