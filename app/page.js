@@ -1044,12 +1044,12 @@ export default function Home() {
                 <h2 className="text-xl mb-4 font-bold">
                   Share Live Scoreboard
                 </h2>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between">
                   <input
                     type="text"
                     readOnly
                     value={shareUrl}
-                    className="flex-1 px-3 py-2 border border-gray-300 bg-transparent"
+                    className="px-3 py-2 border border-gray-300 bg-transparent"
                     style={{ direction: "rtl" }}
                   />
                   <button
@@ -1062,9 +1062,9 @@ export default function Home() {
                         setError("Failed to copy link");
                       }
                     }}
-                    className="px-4 py-2 h-[41.8px] flex gap-2 bg-green-600 text-white hover:bg-blue-600 transition-colors"
+                    className="p-2 h-[41.8px] bg-green-600 text-white "
                   >
-                    <Copy /> Copy Link
+                    <Copy className="inline" /> Copy Link
                   </button>
                 </div>
               </div>
