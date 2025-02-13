@@ -12,6 +12,7 @@ import {
   Save,
   House,
   User,
+  Copy,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 
@@ -126,8 +127,19 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    // In your service worker registration
     if (typeof window !== "undefined") {
-      import("./serviceWorkerRegistration").then((reg) => reg.register());
+      import("./serviceWorkerRegistration").then((reg) => {
+        reg.register({
+          onUpdate: (registration) => {
+            // When new content is available
+            if (registration && registration.waiting) {
+              registration.waiting.postMessage({ type: "SKIP_WAITING" });
+            }
+            window.location.reload();
+          },
+        });
+      });
     }
   }, []);
 
@@ -374,56 +386,6 @@ export default function Home() {
     setError("");
   };
 
-  const calculateScores = () => {
-    setIsCalculating(true);
-    if (!selectedWinner) {
-      setError("Please select a winner first!");
-      return;
-    }
-
-    // Calculate total maal (sum of points from seen players only)
-    const totalMaal = players.reduce((sum, player) => {
-      return player.jokerSeen ? sum + player.points : sum;
-    }, 0);
-
-    const numPlayers = players.length;
-
-    const scores = players.map((player) => {
-      let calculatedScore;
-      if (player.id === selectedWinner) {
-        // Calculate winner's points based on other players' scores
-        const nonWinnerPoints = players
-          .filter((p) => p.id !== selectedWinner)
-          .map((p) => {
-            if (!p.jokerSeen) {
-              return -totalMaal - 10;
-            } else {
-              return p.points * numPlayers - totalMaal - 3;
-            }
-          });
-        calculatedScore = -nonWinnerPoints.reduce(
-          (sum, points) => sum + points,
-          0
-        );
-      } else if (!player.jokerSeen) {
-        calculatedScore = -totalMaal - 10;
-      } else {
-        calculatedScore = player.points * numPlayers - totalMaal - 3;
-      }
-
-      return {
-        id: player.id,
-        name: player.name,
-        currentPoints: player.points,
-        calculatedScore,
-        jokerSeen: player.jokerSeen,
-        isWinner: player.id === selectedWinner,
-      };
-    });
-
-    setCalculatedScores([...scores, { totalMaal }]);
-  };
-
   // Modify your submitScores function to be async
   const submitScores = async () => {
     if (!selectedWinner) {
@@ -613,13 +575,13 @@ export default function Home() {
   return (
     <div
       className={`min-h-screen ${
-        darkMode ? "bg-gray-900 text-white" : "bg-blue-100"
+        darkMode ? "bg-gray-900 text-white" : "bg-green-700"
       }`}
     >
       {typeof window !== "undefined" && showSaveModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center p-4 z-50">
           <div
-            className={`bg-white rounded-lg p-6 max-w-md w-full ${
+            className={`bg-green-700 text-white p-6 max-w-md w-full ${
               darkMode ? "bg-gray-800" : ""
             }`}
           >
@@ -629,20 +591,18 @@ export default function Home() {
               value={saveGameName}
               onChange={(e) => setSaveGameName(e.target.value)}
               placeholder="Enter a name for your saved game"
-              className={`w-full p-2 border rounded mb-4 ${
-                darkMode ? "bg-gray-700 border-gray-600 text-white" : ""
-              }`}
+              className={`w-full p-2 border mb-4 text-black tracking-wide`}
             />
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setShowSaveModal(false)}
-                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded"
+                className="px-4 py-2 bg-white text-red-500 font-semibold"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveGame}
-                className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+                className="px-4 py-2 bg-white text-green-700 font-bold hover:bg-green-600"
               >
                 Save
               </button>
@@ -656,16 +616,8 @@ export default function Home() {
       >
         {!startGame ? (
           <>
-            <div className="relative font-mono min-h-screen bg-slate-800 text-white p-3 pt-14">
-              <h1
-                className="text-6xl font-bold bg-gradient-to-r from-yellow-200 via-yellow-400 to-yellow-500 bg-clip-text text-transparent animate-scanline mb-8"
-                style={{
-                  textShadow: "0 0 10px rgba(234, 179, 8, 0.1)",
-                  WebkitBackgroundClip: "text",
-                  backgroundSize: "200% 100%",
-                  animation: "shimmer 2s linear infinite",
-                }}
-              >
+            <div className="relative min-h-screen bg-green-700 p-3 pt-14">
+              <h1 className="text-6xl font-bold text-white mb-8">
                 Marriage <br /> Point <br />
                 Calculator
               </h1>
@@ -680,8 +632,10 @@ export default function Home() {
             }
            `}</style>
 
-              <div className="border border-green-500 p-6">
-                <h2 className="text-xl mb-6 animate-pulse">Add Players</h2>
+              <div className="p-6 shadow-inner shadow-green-800">
+                <h2 className="text-xl text-white mb-6 font-bold">
+                  Add Players
+                </h2>
 
                 <div className="space-y-4">
                   {players.map((player) => (
@@ -689,7 +643,9 @@ export default function Home() {
                       key={player.id}
                       className="flex items-center gap-4 justify-between"
                     >
-                      <span className="opacity-70">[Player {player.id}]</span>
+                      <span className="text-white font-semibold tracking-wider w-20">
+                        Player {player.id}
+                      </span>
                       <input
                         type="text"
                         id={`player${player.id}`}
@@ -697,13 +653,13 @@ export default function Home() {
                         onChange={(e) =>
                           handleNameChange(player.id, e.target.value)
                         }
-                        placeholder="ENTER NAME"
-                        className="flex-1 bg-neutral-950 border border-green-500 p-2 text-green-500 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400"
+                        placeholder="Enter name"
+                        className="min-[412px]:flex-1 p-[6px] bg-transparent placeholder:text-neutral-50  text-neutral-50 tracking-wider shadow-inner shadow-green-900"
                       />
                       {players.length > 1 && (
                         <button
                           onClick={() => removePlayer(player.id)}
-                          className="px-3 py-1 text-red-500 hover:text-red-400 transition-colors"
+                          className="px-3 py-1 text-rose-500"
                         >
                           <X size={20} />
                         </button>
@@ -716,9 +672,9 @@ export default function Home() {
                   {players.length < 8 && (
                     <button
                       onClick={addPlayer}
-                      className="w-full px-4 py-2 border border-green-500 text-green-500 hover:bg-green-500 hover:text-black transition-colors flex items-center justify-center gap-2"
+                      className="w-full px-4 py-2 bg-green-600 shadow-md text-white font-semibold  flex items-center justify-center gap-2"
                     >
-                      <Plus size={18} /> ADD PLAYER
+                      <Plus size={18} /> Add a player
                     </button>
                   )}
 
@@ -737,9 +693,9 @@ export default function Home() {
                     disabled={
                       players.length < 2 || players.some((p) => !p.name)
                     }
-                    className="w-full px-4 py-2 border border-yellow-400 text-yellow-400 hover:bg-yellow-400 hover:text-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="w-full px-4 py-2 text-neutral-50 font-semibold shadow bg-green-600 disabled:bg-green-600 disabled:opacity-50 disabled:shadow-inner disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    <Play size={18} /> START GAME
+                    <Play size={18} /> Start game
                   </button>
                 </div>
               </div>
@@ -813,56 +769,7 @@ export default function Home() {
             </div>
           </>
         ) : (
-          <div className="flex flex-col justify-between pb-16  lg:p-6 rounded-xl lg:shadow-sm bg-blue-100">
-            {games.length < 1 && (
-              <div className="p-4 mb-6">
-                <div className="p-4 bg-white rounded-lg py-8">
-                  <h2 className="text-lg mb-4 font-mono">*** INSTRUCTIONS</h2>
-                  <div className="space-y-4 text-sm">
-                    <p>
-                      1. Mark players who have seen their cards using the{" "}
-                      <EyeOff size={14} className="inline text-red-600" />{" "}
-                      button
-                    </p>
-                    <p>
-                      2. For players who have seen their cards, enter their
-                      points
-                    </p>
-                    <p>
-                      3. Select the winner using the{" "}
-                      <Trophy size={14} className="inline text-green-600" />{" "}
-                      button
-                    </p>
-                    <p>
-                      4. Click{" "}
-                      <button
-                        className="bg-green-600 p-2 rounded-lg text-white font-semibold"
-                        disabled
-                      >
-                        Submit Scores
-                      </button>{" "}
-                      button to calculate and record the scores
-                    </p>
-                    <p>
-                      5. To dismiss a round, press the{" "}
-                      <X size={17} className="inline text-red-700" />
-                    </p>
-                    <p>
-                      6. To save the game locally, press the{" "}
-                      <Save size={17} className="inline" />
-                    </p>
-                    <p>
-                      7. To share the scoreboard, click the{" "}
-                      <Share2 className="inline" size={18} />
-                    </p>
-                    <p className="text-xs mt-4 ">
-                      Note: Players must see their cards before being selected
-                      as winner
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
+          <div className="flex flex-col justify-between pb-16  lg:p-6 lg:shadow-sm bg-green-700">
             {error && (
               <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg">
                 <div className="flex">
@@ -873,31 +780,19 @@ export default function Home() {
                 </div>
               </div>
             )}
-            <div className="space-y-4">
+            <div className="space-y-2">
               <div className="flex flex-col gap-2 ">
                 {players.map((player) => (
                   <div
                     key={player.id}
-                    className={`p-2 md:px-3 md:pt-2 flex justify-between items-center md:rounded-xl md:border-1 md:shadow-md border-dotted ${
-                      darkMode
-                        ? player.isWinner
-                          ? "border-green-500 bg-green-900 bg-opacity-20"
-                          : player.jokerSeen
-                          ? "border-blue-500 bg-blue-900 bg-opacity-20"
-                          : "border-gray-700 bg-gray-800"
-                        : player.isWinner
-                        ? "border-green-500 bg-gradient-to-br from-green-50 to-green-100"
-                        : player.jokerSeen
-                        ? "border-blue-500 bg-gradient-to-br from-blue-50 to-blue-100"
-                        : "border-gray-200 hover:border-gray-300"
-                    }`}
+                    className={`p-2 md:px-3 md:pt-2 flex justify-between items-center md:rounded-xl md:border-1 md:shadow-md border-dotted `}
                   >
                     <div
-                      className={`font-semibold rounded-lg flex items-end text-sm overflow-x-hidden text-ellipsis ${
+                      className={`font-semibold py-[18px] text-neutral-100 flex-1 flex items-end text-sm overflow-x-hidden text-ellipsis ${
                         selectedWinner === player.id
-                          ? "bg-green-500 text-neutral-50"
-                          : "bg-blue-200"
-                      } text-neutral-800 p-2 w-[90px] max-w-[90px]`}
+                          ? "shadow-inner shadow-green-900 text-white"
+                          : ""
+                      }  p-2 w-[90px] max-w-[90px]`}
                     >
                       <User size={20} />
 
@@ -911,6 +806,7 @@ export default function Home() {
                             id={`points-input-${player.id}`}
                             type="number"
                             inputMode="numeric"
+                            placeholder="0"
                             pattern="[0-9]*"
                             value={player.points === 0 ? "" : player.points}
                             onChange={(e) => {
@@ -923,25 +819,22 @@ export default function Home() {
                                 )
                               );
                             }}
-                            className={`w-12 text-xl text-center px-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 ${
-                              darkMode
-                                ? "bg-gray-800 border-gray-700 text-white"
-                                : "bg-white border-gray-200"
-                            }`}
+                            className={`w-12 text-xl text-center px-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-neutral-200 text-neutral-800 border-gray-200"
+                        `}
                             aria-placeholder="enter points"
                           />
                         </>
                       )}
                       <button
                         onClick={() => handleJokerSeen(player.id)}
-                        className={`w-full px-2 py-2 rounded-lg text-sm font-medium transition-colors duration-300 ease-in-out flex items-center justify-center gap-2 ${
+                        className={`w-full px-2 py-2 text-sm font-medium transition-colors duration-300 ease-in-out flex items-center justify-center gap-2 ${
                           darkMode
                             ? player.jokerSeen
                               ? "bg-blue-600 text-white hover:bg-blue-700"
                               : "bg-red-900 bg-opacity-20 text-red-300 hover:bg-opacity-30"
                             : player.jokerSeen
-                            ? "bg-blue-500 text-white "
-                            : "text-blue-500 bg-white "
+                            ? "bg-blue-500 text-neutral-100 "
+                            : "text-blue-200 shadow-inner shadow-green-800"
                         }`}
                       >
                         {player.jokerSeen ? (
@@ -963,12 +856,12 @@ export default function Home() {
                       <button
                         onClick={() => handleWinnerSelect(player.id)}
                         disabled={!player.jokerSeen}
-                        className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-center gap-1 ${
+                        className={`w-[100px] px-3 py-2  text-sm font-medium transition-all duration-200 flex items-center justify-center gap-1 ${
                           player.id === selectedWinner
-                            ? "bg-green-500 text-white shadow-sm"
+                            ? "bg-green-600 text-white shadow"
                             : player.jokerSeen
-                            ? "bg-white text-green-600"
-                            : "bg-white text-green-600 cursor-not-allowed"
+                            ? "bg-neutral-50 text-green-600"
+                            : " opacity-80 text-neutral-50 cursor-not-allowed shadow-inner shadow-green-800"
                         }`}
                       >
                         {player.id === selectedWinner ? (
@@ -990,15 +883,64 @@ export default function Home() {
               <button
                 onClick={submitScores}
                 disabled={isSubmitting || !selectedWinner}
-                className={`px-4 py-2 text-white rounded-lg font-medium transition-colors duration-200 ${
+                className={`px-4 py-2 text-white font-medium transition-colors duration-200 ${
                   isSubmitting || !selectedWinner
-                    ? "bg-neutral-800 text-white cursor-not-allowed"
-                    : "bg-green-500 hover:bg-green-300 drop-shadow-lg"
+                    ? "bg-green-700 opacity-60 cursor-not-allowed shadow-inner shadow-green-800"
+                    : "bg-green-600"
                 }`}
               >
                 {isSubmitting ? "Submitting..." : "Submit Scores"}
               </button>
             </div>
+            {games.length < 1 && (
+              <div className="p-4 mb-6 font-semibold">
+                <div className="p-4 bg-green-800 shadow-inner shadow-green-900 text-neutral-200 py-8">
+                  <h2 className="text-lg mb-4 tracking-wide font-bold">
+                    *** INSTRUCTIONS
+                  </h2>
+                  <div className="space-y-4 text-sm">
+                    <p>
+                      1. Mark players who have seen their cards using the{" "}
+                      <EyeOff size={14} className="inline" /> button
+                    </p>
+                    <p>
+                      2. For players who have seen their cards, enter their
+                      points
+                    </p>
+                    <p>
+                      3. Select the winner using the{" "}
+                      <Trophy size={14} className="inline" /> button
+                    </p>
+                    <p>
+                      4. Click{" "}
+                      <button
+                        className="bg-green-600 p-2 text-white font-semibold"
+                        disabled
+                      >
+                        Submit Scores
+                      </button>{" "}
+                      button to record the scores
+                    </p>
+                    <p>
+                      5. To dismiss a round, press the{" "}
+                      <X size={17} className="inline" />
+                    </p>
+                    <p>
+                      6. To save the game locally, press the{" "}
+                      <Save size={17} className="inline" />
+                    </p>
+                    <p>
+                      7. To share the scoreboard, click the{" "}
+                      <Share2 className="inline" size={18} />
+                    </p>
+                    <p className="text-xs mt-4 ">
+                      Note: Players must see their cards before being selected
+                      as winner
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
             {games.length > 0 && (
               <div
                 className={`mb-8 transition-colors duration-200 ${
@@ -1097,15 +1039,18 @@ export default function Home() {
               </div>
             )}
 
-            {startGame && gameId && (
-              <div className="mb-6 p-4 bg-white rounded-lg shadow-sm">
-                <h2 className="text-xl mb-4">Share Live Scoreboard</h2>
+            {startGame && gameId && games.length > 0 && (
+              <div className="mb-6 p-4 text-neutral-50 border-t-4">
+                <h2 className="text-xl mb-4 font-bold">
+                  Share Live Scoreboard
+                </h2>
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
                     readOnly
                     value={shareUrl}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                    className="flex-1 px-3 py-2 border border-gray-300 bg-transparent"
+                    style={{ direction: "rtl" }}
                   />
                   <button
                     onClick={async () => {
@@ -1117,9 +1062,9 @@ export default function Home() {
                         setError("Failed to copy link");
                       }
                     }}
-                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                    className="px-4 py-2 h-[41.8px] flex gap-2 bg-green-600 text-white hover:bg-blue-600 transition-colors"
                   >
-                    Copy Link
+                    <Copy /> Copy Link
                   </button>
                 </div>
               </div>
