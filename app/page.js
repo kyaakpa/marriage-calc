@@ -171,18 +171,36 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    // In your service worker registration
-    if (typeof window !== "undefined") {
-      import("./serviceWorkerRegistration").then((reg) => {
-        reg.register({
-          onUpdate: (registration) => {
-            // When new content is available
-            if (registration && registration.waiting) {
-              registration.waiting.postMessage({ type: "SKIP_WAITING" });
-            }
-            window.location.reload();
-          },
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      // Register service worker
+      navigator.serviceWorker
+        .register("/service-worker.js")
+        .then((registration) => {
+          // Check for updates
+          registration.addEventListener("updatefound", () => {
+            const newWorker = registration.installing;
+            newWorker.addEventListener("statechange", () => {
+              if (
+                newWorker.state === "installed" &&
+                navigator.serviceWorker.controller
+              ) {
+                // New version available
+                if (
+                  window.confirm("New version available! Reload to update?")
+                ) {
+                  window.location.reload();
+                }
+              }
+            });
+          });
+        })
+        .catch((error) => {
+          console.error("Service Worker registration failed:", error);
         });
+
+      // Handle updates when the service worker is already active
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        window.location.reload();
       });
     }
   }, []);
