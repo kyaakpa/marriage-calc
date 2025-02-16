@@ -12,16 +12,17 @@ export default function GameViewer() {
   const [lastUpdate, setLastUpdate] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [updateCount, setUpdateCount] = useState(0);
+  const cleanId = id ? decodeURIComponent(id).replace("id=", "") : null;
 
   const fetchGameData = async () => {
-    if (!id) return;
+    if (!cleanId) return;
 
     setIsRefreshing(true);
     try {
       const { data, error } = await supabase
         .from("games")
         .select("*")
-        .eq("id", id)
+        .eq("id", cleanId)
         .single();
 
       if (error) {
@@ -44,21 +45,21 @@ export default function GameViewer() {
   };
 
   useEffect(() => {
-    if (!id) return;
+    if (!cleanId) return;
 
     // Initial fetch
     fetchGameData();
 
     // Set up real-time subscription
     const subscription = supabase
-      .channel(`game_${id}`)
+      .channel(`game_${cleanId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "games",
-          filter: `id=eq.${id}`,
+          filter: `id=eq.${cleanId}`,
         },
         (payload) => {
           setGameData(payload.new);
@@ -79,7 +80,7 @@ export default function GameViewer() {
       subscription.unsubscribe();
       clearInterval(pollInterval);
     };
-  }, [id]); // Added id to dependency array
+  }, [cleanId]); // Changed dependency to cleanId
 
   if (error) {
     return (

@@ -88,6 +88,9 @@ export default function Home() {
 
   useEffect(() => {
     const saveState = () => {
+      // Skip saving if there's no data to save
+      if (!players.length || !games.length) return;
+
       const gameState = {
         players,
         games,
@@ -95,8 +98,49 @@ export default function Home() {
         lastSaved: new Date().toISOString(),
       };
 
+      // Save to autoSave in localStorage
       localStorage.setItem("marriageGameAutoSave", JSON.stringify(gameState));
       setLastSaved(new Date().toISOString());
+
+      // Check if this is a loaded game
+      const originalGameData = localStorage.getItem("originalGameData");
+      if (originalGameData) {
+        const { id, name, date } = JSON.parse(originalGameData);
+
+        // Calculate total points for each player
+        const playerTotals = {};
+        players.forEach((player) => {
+          playerTotals[player.id] = games.reduce(
+            (sum, game) => sum + (game.scores[player.id] || 0),
+            0
+          );
+        });
+
+        // Get existing saved games
+        const savedGames = JSON.parse(
+          localStorage.getItem("savedGames") || "[]"
+        );
+        const savedGameIndex = savedGames.findIndex((game) => game.id === id);
+
+        if (savedGameIndex !== -1) {
+          // Update the existing saved game
+          savedGames[savedGameIndex] = {
+            ...savedGames[savedGameIndex],
+            players,
+            games,
+            playerTotals,
+            last_update: new Date().toISOString(),
+            // Keep original metadata
+            id,
+            name,
+            date,
+          };
+
+          // Update localStorage
+          localStorage.setItem("savedGames", JSON.stringify(savedGames));
+          setSavedGamesMetadata(savedGames);
+        }
+      }
     };
 
     // Save whenever these states change
@@ -165,132 +209,306 @@ export default function Home() {
     }
   }, []);
 
+  const convertDateStringToDate = (dateString) => {
+    // Expected format: "DD/MM/YY HH:mm:ss"
+    const [datePart, timePart] = dateString.split(" ");
+    const [day, month, year] = datePart.split("/");
+    const [hours, minutes, seconds] = timePart.split(":");
+
+    // Note: Months are 0-based in JavaScript Date
+    return new Date(
+      2000 + parseInt(year), // Convert YY to YYYY
+      parseInt(month) - 1, // Subtract 1 from month
+      parseInt(day),
+      parseInt(hours),
+      parseInt(minutes),
+      parseInt(seconds)
+    );
+  };
+
   useEffect(() => {
     const savedGames = localStorage.getItem("savedGames");
 
     if (savedGames) {
-      setSavedGamesMetadata(JSON.parse(savedGames));
+      // Parse and sort the games by date in descending order
+      const games = JSON.parse(savedGames);
+      const sortedGames = games.sort((a, b) => {
+        // Convert date strings to Date objects for comparison
+        const dateA = convertDateStringToDate(a.date);
+        const dateB = convertDateStringToDate(b.date);
+        return dateB - dateA; // Sort in descending order (newest first)
+      });
+      setSavedGamesMetadata(sortedGames);
     }
   }, []);
 
   // First, modify the handleSaveGame function to include total points:
-  const handleSaveGame = () => {
+  const handleSaveGame = async () => {
     if (!saveGameName.trim()) {
       setError("Please enter a name for your saved game");
       return;
     }
 
-    // Calculate total points for each player
-    const playerTotals = {};
-    players.forEach((player) => {
-      playerTotals[player.id] = games.reduce(
-        (sum, game) => sum + (game.scores[player.id] || 0),
-        0
+    try {
+      // Create new game ID for Supabase
+      const supabaseId = crypto.randomUUID();
+
+      // Create game in Supabase
+      const { error: supabaseError } = await supabase.from("games").insert({
+        id: supabaseId,
+        players,
+        games,
+        last_update: new Date().toISOString(),
+      });
+
+      if (supabaseError) {
+        console.error("Supabase Error:", supabaseError);
+        setError("Failed to save game to server");
+        return;
+      }
+
+      // Calculate total points for each player
+      const playerTotals = {};
+      players.forEach((player) => {
+        playerTotals[player.id] = games.reduce(
+          (sum, game) => sum + (game.scores[player.id] || 0),
+          0
+        );
+      });
+
+      const now = new Date();
+      const formattedDate = `${String(now.getDate()).padStart(2, "0")}/${String(
+        now.getMonth() + 1
+      ).padStart(2, "0")}/${String(now.getFullYear()).slice(2)} ${String(
+        now.getHours()
+      ).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(
+        now.getSeconds()
+      ).padStart(2, "0")}`;
+
+      const gameData = {
+        id: Date.now(),
+        supabaseId, // Store the Supabase ID
+        name: saveGameName,
+        date: formattedDate,
+        players,
+        games,
+        startGame,
+        playerTotals,
+      };
+
+      const existingSavedGames = JSON.parse(
+        localStorage.getItem("savedGames") || "[]"
       );
-    });
+      const updatedSavedGames = [...existingSavedGames, gameData].sort(
+        (a, b) => {
+          const dateA = convertDateStringToDate(a.date);
+          const dateB = convertDateStringToDate(b.date);
+          return dateB - dateA;
+        }
+      );
 
-    const gameData = {
-      id: Date.now(),
-      name: saveGameName,
-      date: (() => {
-        const now = new Date();
-        const day = String(now.getDate()).padStart(2, "0");
-        const month = String(now.getMonth() + 1).padStart(2, "0");
-        const year = String(now.getFullYear()).slice(2);
-        const hours = String(now.getHours()).padStart(2, "0");
-        const minutes = String(now.getMinutes()).padStart(2, "0");
-        const seconds = String(now.getSeconds()).padStart(2, "0");
-        return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-      })(),
-      players,
-      games,
-      startGame,
-      playerTotals, // Add the total points
-    };
+      localStorage.setItem("savedGames", JSON.stringify(updatedSavedGames));
+      setSavedGamesMetadata(updatedSavedGames);
 
-    const existingSavedGames = JSON.parse(
-      localStorage.getItem("savedGames") || "[]"
-    );
-    const updatedSavedGames = [...existingSavedGames, gameData];
-
-    localStorage.setItem("savedGames", JSON.stringify(updatedSavedGames));
-    setSavedGamesMetadata(updatedSavedGames);
-
-    setSaveGameName("");
-    setShowSaveModal(false);
-    alert("Game saved successfully!");
+      setSaveGameName("");
+      setShowSaveModal(false);
+      setError("Game saved successfully!");
+      setTimeout(() => setError(""), 2000);
+    } catch (err) {
+      console.error("Error in handleSaveGame:", err);
+      setError("Failed to save game");
+      setTimeout(() => setError(""), 3000);
+    }
   };
+  const loadSavedGame = async (gameData) => {
+    try {
+      // Create new game ID for the loaded game
+      const newGameId = crypto.randomUUID();
 
-  const loadSavedGame = (gameData) => {
-    setPlayers(gameData.players);
-    setGames(gameData.games);
-    setStartGame(gameData.startGame);
+      // Create game in Supabase
+      const { error: supabaseError } = await supabase.from("games").insert({
+        id: newGameId,
+        players: gameData.players,
+        games: gameData.games,
+        last_update: new Date().toISOString(),
+      });
 
-    localStorage?.setItem(
-      "marriageGamePlayers",
-      JSON.stringify(gameData.players)
-    );
-    localStorage?.setItem(
-      "marriageGameHistory",
-      JSON.stringify(gameData.games)
-    );
-    localStorage?.setItem(
-      "marriageGameState",
-      JSON.stringify(gameData.startGame)
-    );
+      if (supabaseError) {
+        console.error("Supabase Error:", supabaseError);
+        throw new Error(`Failed to create game: ${supabaseError.message}`);
+      }
+
+      // Save the original game's ID and data
+      localStorage.setItem(
+        "originalGameData",
+        JSON.stringify({
+          id: gameData.id,
+          name: gameData.name,
+          date: gameData.date,
+        })
+      );
+
+      // Update local state AFTER successful Supabase insert
+      setGameId(newGameId);
+      setPlayers(gameData.players);
+      setGames(gameData.games);
+      setStartGame(gameData.startGame);
+
+      // Set the share URL with the clean ID
+      setShareUrl(
+        `${window.location.origin}/watch/${encodeURIComponent(newGameId)}`
+      );
+
+      // Save to localStorage
+      localStorage.setItem("currentGameId", newGameId);
+      localStorage.setItem(
+        "marriageGamePlayers",
+        JSON.stringify(gameData.players)
+      );
+      localStorage.setItem(
+        "marriageGameHistory",
+        JSON.stringify(gameData.games)
+      );
+      localStorage.setItem(
+        "marriageGameState",
+        JSON.stringify(gameData.startGame)
+      );
+
+      console.log("Game successfully loaded and synced");
+    } catch (err) {
+      console.error("LoadSavedGame Error:", err);
+      setError("Failed to sync game with live scoreboard");
+      setTimeout(() => setError(""), 3000);
+    }
   };
-
   const shareScoreboard = async () => {
     if (!scoreboardRef.current) return;
 
     try {
-      const html2pdf = (await import("html2pdf.js")).default;
+      const html2canvas = (await import("html2canvas")).default;
 
-      const element = scoreboardRef.current;
-      const opt = {
-        margin: 1,
-        filename: "marriage-game-scores.pdf",
-        image: { type: "jpeg", quality: 0.98 },
-        html2canvas: { scale: 2 },
-        jsPDF: { unit: "in", format: "letter", orientation: "landscape" },
-      };
+      // Add a temporary background to ensure the image isn't transparent
+      const originalBg = scoreboardRef.current.style.background;
+      scoreboardRef.current.style.background = "#ffffff";
 
-      const pdf = await html2pdf().set(opt).from(element).save();
+      const canvas = await html2canvas(scoreboardRef.current, {
+        scale: 2, // Higher resolution
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+      });
 
-      // For mobile sharing
+      // Restore original background
+      scoreboardRef.current.style.background = originalBg;
+
+      // Convert canvas to blob
+      const blob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, "image/png", 1.0)
+      );
+      const file = new File([blob], "marriage-game-scores.png", {
+        type: "image/png",
+      });
+
+      // Try native sharing first
       if (navigator.share) {
         try {
-          // Convert the pdf to blob
-          const pdfBlob = await html2pdf()
-            .set(opt)
-            .from(element)
-            .output("blob");
-          const file = new File([pdfBlob], "marriage-game-scores.pdf", {
-            type: "application/pdf",
-          });
-
           await navigator.share({
             title: "Marriage Card Game Scores",
             files: [file],
           });
-        } catch (error) {
-          // If sharing fails, the pdf would have already been downloaded
-          console.error("Error sharing:", error);
+          return;
+        } catch (err) {
+          console.log("Native sharing failed, falling back to download", err);
         }
       }
+
+      // Fallback to download if native sharing isn't available or fails
+      const link = document.createElement("a");
+      link.href = canvas.toDataURL("image/png");
+      link.download = "marriage-game-scores.png";
+      link.click();
     } catch (error) {
-      console.error("Error generating PDF:", error);
-      setError("Failed to generate PDF");
+      console.error("Error generating image:", error);
+      setError("Failed to generate image");
       setTimeout(() => setError(""), 2000);
     }
   };
 
-  const resetGame = () => {
+  const resetGame = async () => {
+    // Auto-save the current game before resetting
+    if (games.length > 0) {
+      const now = new Date();
+      const formattedDate = `${String(now.getDate()).padStart(2, "0")}/${String(
+        now.getMonth() + 1
+      ).padStart(2, "0")}/${String(now.getFullYear()).slice(2)} ${String(
+        now.getHours()
+      ).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(
+        now.getSeconds()
+      ).padStart(2, "0")}`;
+
+      // Calculate total points for each player
+      const playerTotals = {};
+      players.forEach((player) => {
+        playerTotals[player.id] = games.reduce(
+          (sum, game) => sum + (game.scores[player.id] || 0),
+          0
+        );
+      });
+
+      // Get existing saved games
+      const existingSavedGames = JSON.parse(
+        localStorage.getItem("savedGames") || "[]"
+      );
+
+      // Check if this was a loaded game
+      const originalGameData = localStorage.getItem("originalGameData");
+      let gameToUpdate;
+
+      if (originalGameData) {
+        // If this was a loaded game, find the original game
+        const { id } = JSON.parse(originalGameData);
+        gameToUpdate = existingSavedGames.find((game) => game.id === id);
+      }
+
+      if (gameToUpdate) {
+        // Update existing game instead of creating new one
+        const updatedGames = existingSavedGames.map((game) =>
+          game.id === gameToUpdate.id
+            ? {
+                ...game,
+                players,
+                games,
+                playerTotals,
+                last_update: new Date().toISOString(),
+              }
+            : game
+        );
+        localStorage.setItem("savedGames", JSON.stringify(updatedGames));
+        setSavedGamesMetadata(updatedGames);
+      } else {
+        // Only create new save if it wasn't a loaded game
+        const gameData = {
+          id: Date.now(),
+          name: `Game ${formattedDate}`,
+          date: formattedDate,
+          players,
+          games,
+          startGame,
+          playerTotals,
+        };
+        const updatedSavedGames = [...existingSavedGames, gameData];
+        localStorage.setItem("savedGames", JSON.stringify(updatedSavedGames));
+        setSavedGamesMetadata(updatedSavedGames);
+      }
+    }
+
+    // Clean up all game state
     localStorage.removeItem("marriageGamePlayers");
     localStorage.removeItem("marriageGameHistory");
     localStorage.removeItem("marriageGameState");
     localStorage.removeItem("marriageGameAutoSave");
-    localStorage.removeItem("currentGameId"); // Add this line
+    localStorage.removeItem("currentGameId");
+    localStorage.removeItem("originalGameData"); // Clear the original game data
     setGameId(null);
     setShareUrl("");
     setPlayers([
@@ -480,17 +698,57 @@ export default function Home() {
 
       // Update Supabase
       if (gameId) {
-        const { error } = await supabase
-          .from("games")
-          .update({
-            players: updatedPlayers,
-            games: updatedGames,
-            last_update: new Date().toISOString(),
-          })
-          .eq("id", gameId);
+        try {
+          // Update the game in Supabase
+          const { error: supabaseError } = await supabase
+            .from("games")
+            .update({
+              players: updatedPlayers,
+              games: updatedGames,
+              last_update: new Date().toISOString(),
+            })
+            .eq("id", gameId);
 
-        if (error) {
-          console.error("Error updating game:", error);
+          if (supabaseError) {
+            console.error("Error updating game:", supabaseError);
+            setError("Failed to update game");
+            setIsSubmitting(false);
+            return;
+          }
+
+          // Also update the saved game in localStorage if this is a loaded game
+          const savedGames = JSON.parse(
+            localStorage.getItem("savedGames") || "[]"
+          );
+          const savedGameIndex = savedGames.findIndex(
+            (game) => game.supabaseId === gameId
+          );
+
+          if (savedGameIndex !== -1) {
+            // Calculate total points for each player
+            const playerTotals = {};
+            players.forEach((player) => {
+              playerTotals[player.id] = updatedGames.reduce(
+                (sum, game) => sum + (game.scores[player.id] || 0),
+                0
+              );
+            });
+
+            // Update the existing saved game
+            savedGames[savedGameIndex] = {
+              ...savedGames[savedGameIndex],
+              players: updatedPlayers,
+              games: updatedGames,
+              playerTotals,
+              last_update: new Date().toISOString(),
+            };
+
+            // Update localStorage
+            localStorage.setItem("savedGames", JSON.stringify(savedGames));
+            setSavedGamesMetadata(savedGames);
+          }
+        } catch (err) {
+          console.error("Error updating game:", err);
           setError("Failed to update game");
           setIsSubmitting(false);
           return;
@@ -554,21 +812,44 @@ export default function Home() {
   };
 
   //delete saved game
-  const deleteSavedGame = (gameId) => {
+  const deleteSavedGame = async (gameId) => {
     const isConfirmed = window.confirm(
       "Are you sure you want to delete this saved game?"
     );
 
     if (isConfirmed) {
-      const updatedSavedGames = savedGamesMetadata.filter(
-        (game) => game.id !== gameId
-      );
+      try {
+        // Find the game data in savedGamesMetadata
+        const gameToDelete = savedGamesMetadata.find(
+          (game) => game.id === gameId
+        );
 
-      // Update localStorage
-      localStorage.setItem("savedGames", JSON.stringify(updatedSavedGames));
+        // If the game exists and has a Supabase ID, delete it from Supabase
+        if (gameToDelete && gameToDelete.supabaseId) {
+          const { error } = await supabase
+            .from("games")
+            .delete()
+            .eq("id", gameToDelete.supabaseId);
 
-      // Update state
-      setSavedGamesMetadata(updatedSavedGames);
+          if (error) {
+            console.error("Error deleting game from Supabase:", error);
+            setError("Failed to delete game from server");
+            return;
+          }
+        }
+
+        // Update local storage and state
+        const updatedSavedGames = savedGamesMetadata.filter(
+          (game) => game.id !== gameId
+        );
+
+        localStorage.setItem("savedGames", JSON.stringify(updatedSavedGames));
+        setSavedGamesMetadata(updatedSavedGames);
+      } catch (err) {
+        console.error("Error in deleteSavedGame:", err);
+        setError("Failed to delete game");
+        setTimeout(() => setError(""), 3000);
+      }
     }
   };
 
@@ -616,7 +897,7 @@ export default function Home() {
       >
         {!startGame ? (
           <>
-            <div className="relative min-h-screen bg-green-700 p-3 pt-14">
+            <div className="relative min-h-screen bg-green-700 p-3 pt-14 overflow-x-hidden">
               <h1 className="text-6xl font-bold text-white mb-8">
                 Marriage <br /> Point <br />
                 Calculator
@@ -632,10 +913,8 @@ export default function Home() {
             }
            `}</style>
 
-              <div className="p-6 shadow-inner shadow-green-800">
-                <h2 className="text-xl text-white mb-6 font-bold">
-                  Add Players
-                </h2>
+              <div className="p-6 shadow-inner shadow-green-800 text-yellow-50">
+                <h2 className="text-xl  mb-6 font-bold">Add Players</h2>
 
                 <div className="space-y-4">
                   {players.map((player) => (
@@ -643,7 +922,7 @@ export default function Home() {
                       key={player.id}
                       className="flex items-center gap-4 justify-between"
                     >
-                      <span className="text-white font-semibold tracking-wider w-20">
+                      <span className=" font-semibold tracking-wider w-20">
                         Player {player.id}
                       </span>
                       <input
@@ -654,14 +933,14 @@ export default function Home() {
                           handleNameChange(player.id, e.target.value)
                         }
                         placeholder="Enter name"
-                        className="min-[412px]:flex-1 p-[6px] bg-transparent placeholder:text-neutral-50  text-neutral-50 tracking-wider shadow-inner shadow-green-900"
+                        className="min-[412px]:flex-1 p-[6px] bg-transparent placeholder:text-neutral-50  tracking-wider shadow-inner shadow-green-900"
                       />
                       {players.length > 1 && (
                         <button
                           onClick={() => removePlayer(player.id)}
-                          className="px-3 py-1 text-rose-500"
+                          className="p-2 text-rose-500 bg-green-900 rounded-full"
                         >
-                          <X size={20} />
+                          <X size={20} strokeWidth={3} />
                         </button>
                       )}
                     </div>
@@ -699,72 +978,72 @@ export default function Home() {
                   </button>
                 </div>
               </div>
+
               {savedGamesMetadata.length > 0 && (
-                <div
-                  className={`mt-4 p-4 border ${
-                    darkMode ? "border-gray-700" : "border-neutral-400"
-                  }`}
-                >
-                  <h3 className="font-semibold pb-2 pl-2">Saved Games</h3>
-                  <div className="space-y-2">
-                    {savedGamesMetadata.map((game) => (
-                      <div
-                        key={game.id}
-                        className="flex flex-col justify-between p-2 border-b border-neutral-400"
-                      >
-                        <div className="text-sm  flex justify-between items-center pb-2">
-                          <span className="text-base">{game.name}</span>
-                          <span className="opacity-80">{game.date}</span>
-                        </div>
+                <>
+                  <div className="relative border-t-2 min-w-full overflow-x-hidden -mx-4 mt-8" />
+                  <div className={`mt-4 p-2 text-white`}>
+                    <h3 className="font-bold pb-2 pl-2 text-xl">Saved Games</h3>
+                    <div className="space-y-2">
+                      {savedGamesMetadata.map((game) => (
+                        <div
+                          key={game.id}
+                          className="flex flex-col justify-between p-2 border-b border-neutral-400"
+                        >
+                          <div className="text-sm  flex justify-between items-center pb-2">
+                            <span className="text-base">{game.name}</span>
+                            <span className="opacity-80">{game.date}</span>
+                          </div>
 
-                        <div className="flex justify-between items-center">
-                          <div className="text-sm w-full pr-3">
-                            {Object.entries(game.playerTotals || {}).map(
-                              ([playerId, total]) => {
-                                const player = game.players.find(
-                                  (p) => p.id === parseInt(playerId)
-                                );
-                                return player ? (
-                                  <div key={playerId}>
-                                    <div className="flex justify-between pr-4 border border-neutral-500">
-                                      <div className="flex flex-col">
-                                        {player.name}
+                          <div className="flex justify-between items-center">
+                            <div className="text-sm w-full pr-3">
+                              {Object.entries(game.playerTotals || {}).map(
+                                ([playerId, total]) => {
+                                  const player = game.players.find(
+                                    (p) => p.id === parseInt(playerId)
+                                  );
+                                  return player ? (
+                                    <div key={playerId}>
+                                      <div className="flex justify-between pr-4 border border-[#DDD700] bg-[#1b344eb0] items-center">
+                                        <div className="flex flex-col pl-2 py-1 text-[#F5F5F5] ">
+                                          {player.name}
+                                        </div>
+
+                                        <span
+                                          className={
+                                            total >= 0
+                                              ? "text-green-500"
+                                              : "text-red-500"
+                                          }
+                                        >
+                                          {total}
+                                        </span>
                                       </div>
-
-                                      <span
-                                        className={
-                                          total >= 0
-                                            ? "text-green-600"
-                                            : "text-red-600"
-                                        }
-                                      >
-                                        {total}
-                                      </span>
                                     </div>
-                                  </div>
-                                ) : null;
-                              }
-                            )}
-                          </div>
-                          <div className="flex flex-col gap-3 text-sm">
-                            <button
-                              onClick={() => loadSavedGame(game)}
-                              className="px-4 py-2 border border-blue-500 text-white hover:bg-blue-600"
-                            >
-                              Load
-                            </button>
-                            <button
-                              onClick={() => deleteSavedGame(game.id)}
-                              className="px-4 py-2 border border-red-500 text-white hover:bg-red-600"
-                            >
-                              Delete
-                            </button>
+                                  ) : null;
+                                }
+                              )}
+                            </div>
+                            <div className="flex flex-col gap-3 text-sm tracking-wide">
+                              <button
+                                onClick={() => loadSavedGame(game)}
+                                className="px-4 py-2 border-2 border-[#DDD700] bg-blue-600 text-white"
+                              >
+                                Load
+                              </button>
+                              <button
+                                onClick={() => deleteSavedGame(game.id)}
+                                className="px-4 py-2 border-2 border-[#DDD700] bg-red-800"
+                              >
+                                Delete
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
+                </>
               )}
             </div>
           </>
@@ -1040,17 +1319,16 @@ export default function Home() {
             )}
 
             {startGame && gameId && games.length > 0 && (
-              <div className="mb-6 p-4 text-neutral-50 border-t-4">
-                <h2 className="text-xl mb-4 font-bold">
+              <div className="mb-6 p-4  border-t-4 text-yellow-50">
+                <h2 className="text-xl mb-4 font-bold ">
                   Share Live Scoreboard
                 </h2>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <input
                     type="text"
                     readOnly
                     value={shareUrl}
-                    className="px-3 py-2 border border-gray-300 bg-transparent"
-                    style={{ direction: "rtl" }}
+                    className="px-3 py-2 border border-gray-300 bg-transparent flex-1 "
                   />
                   <button
                     onClick={async () => {
