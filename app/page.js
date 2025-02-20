@@ -17,6 +17,8 @@ import {
 import { supabase } from "./lib/supabase";
 
 export default function Home() {
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [heldPlayers, setHeldPlayers] = useState(new Set());
   const [gameId, setGameId] = useState(null);
   const [shareUrl, setShareUrl] = useState("");
   const [copied, setCopied] = useState(false);
@@ -44,6 +46,9 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
+  const [showNewPlayerModal, setShowNewPlayerModal] = useState(false);
+  const [newPlayerName, setNewPlayerName] = useState("");
+
   useEffect(() => {
     if (startGame) {
       // Check if we have an existing game ID in localStorage
@@ -86,10 +91,11 @@ export default function Home() {
     setDarkMode(isDark);
   }, []);
 
+  // Remove or modify the auto-save useEffect to prevent duplicate saves
   useEffect(() => {
     const saveState = () => {
-      // Skip saving if there's no data to save
-      if (!players.length || !games.length) return;
+      // Skip saving if there's no data to save or no unsaved changes
+      if (!players.length || !games.length || !hasUnsavedChanges) return;
 
       const gameState = {
         players,
@@ -101,53 +107,13 @@ export default function Home() {
       // Save to autoSave in localStorage
       localStorage.setItem("marriageGameAutoSave", JSON.stringify(gameState));
       setLastSaved(new Date().toISOString());
-
-      // Check if this is a loaded game
-      const originalGameData = localStorage.getItem("originalGameData");
-      if (originalGameData) {
-        const { id, name, date } = JSON.parse(originalGameData);
-
-        // Calculate total points for each player
-        const playerTotals = {};
-        players.forEach((player) => {
-          playerTotals[player.id] = games.reduce(
-            (sum, game) => sum + (game.scores[player.id] || 0),
-            0
-          );
-        });
-
-        // Get existing saved games
-        const savedGames = JSON.parse(
-          localStorage.getItem("savedGames") || "[]"
-        );
-        const savedGameIndex = savedGames.findIndex((game) => game.id === id);
-
-        if (savedGameIndex !== -1) {
-          // Update the existing saved game
-          savedGames[savedGameIndex] = {
-            ...savedGames[savedGameIndex],
-            players,
-            games,
-            playerTotals,
-            last_update: new Date().toISOString(),
-            // Keep original metadata
-            id,
-            name,
-            date,
-          };
-
-          // Update localStorage
-          localStorage.setItem("savedGames", JSON.stringify(savedGames));
-          setSavedGamesMetadata(savedGames);
-        }
-      }
     };
 
     // Save whenever these states change
     const autoSaveTimer = setTimeout(saveState, 1000);
 
     return () => clearTimeout(autoSaveTimer);
-  }, [players, games, startGame]);
+  }, [players, games, startGame, hasUnsavedChanges]);
 
   // Load auto-saved state on component mount
   useEffect(() => {
@@ -226,6 +192,40 @@ export default function Home() {
       setStartGame(JSON.parse(savedGameState));
     }
   }, []);
+  const togglePlayerHold = (playerId) => {
+    setHeldPlayers((prev) => {
+      const newHeld = new Set(prev);
+      if (newHeld.has(playerId)) {
+        newHeld.delete(playerId);
+      } else {
+        newHeld.add(playerId);
+      }
+      return newHeld;
+    });
+
+    // If player is being held, reset their state
+    if (!heldPlayers.has(playerId)) {
+      setPlayers((prev) =>
+        prev.map((p) => {
+          if (p.id === playerId) {
+            return {
+              ...p,
+              points: 0,
+              jokerSeen: false,
+              isWinner: false,
+              roundPoints: 0,
+            };
+          }
+          return p;
+        })
+      );
+
+      // If this player was the selected winner, clear it
+      if (selectedWinner === playerId) {
+        setSelectedWinner(null);
+      }
+    }
+  };
 
   const convertDateStringToDate = (dateString) => {
     // Expected format: "DD/MM/YY HH:mm:ss"
@@ -327,6 +327,7 @@ export default function Home() {
 
       localStorage.setItem("savedGames", JSON.stringify(updatedSavedGames));
       setSavedGamesMetadata(updatedSavedGames);
+      setHasUnsavedChanges(false);
 
       setSaveGameName("");
       setShowSaveModal(false);
@@ -338,6 +339,53 @@ export default function Home() {
       setTimeout(() => setError(""), 3000);
     }
   };
+
+  const handleAddNewPlayer = () => {
+    if (!newPlayerName.trim()) {
+      setError("Please enter a player name");
+      return;
+    }
+
+    // Generate new player ID
+    const newPlayerId = Math.max(...players.map((p) => p.id)) + 1;
+
+    // Create new player object
+    const newPlayer = {
+      id: newPlayerId,
+      name: newPlayerName.trim(),
+      points: 0,
+      isWinner: false,
+      jokerSeen: false,
+      roundPoints: 0,
+    };
+
+    // Update existing games to include the new player with 0 scores
+    const updatedGames = games.map((game) => ({
+      ...game,
+      scores: {
+        ...game.scores,
+        [newPlayerId]: 0,
+      },
+      roundPoints: {
+        ...game.roundPoints,
+        [newPlayerId]: 0,
+      },
+    }));
+
+    // Update players array
+    const updatedPlayers = [...players, newPlayer];
+
+    // Update state
+    setPlayers(updatedPlayers);
+    setGames(updatedGames);
+    setNewPlayerName("");
+    setShowNewPlayerModal(false);
+
+    // Update localStorage
+    localStorage.setItem("marriageGameHistory", JSON.stringify(updatedGames));
+    localStorage.setItem("marriageGamePlayers", JSON.stringify(updatedPlayers));
+  };
+
   const loadSavedGame = async (gameData) => {
     try {
       // Create new game ID for the loaded game
@@ -454,7 +502,7 @@ export default function Home() {
 
   const resetGame = async () => {
     // Auto-save the current game before resetting
-    if (games.length > 0) {
+    if (games.length > 0 && hasUnsavedChanges) {
       const now = new Date();
       const formattedDate = `${String(now.getDate()).padStart(2, "0")}/${String(
         now.getMonth() + 1
@@ -503,7 +551,7 @@ export default function Home() {
         );
         localStorage.setItem("savedGames", JSON.stringify(updatedGames));
         setSavedGamesMetadata(updatedGames);
-      } else {
+      } else if (hasUnsavedChanges) {
         // Only create new save if it wasn't a loaded game
         const gameData = {
           id: Date.now(),
@@ -542,6 +590,7 @@ export default function Home() {
     setGames([]);
     setStartGame(false);
     setLastSaved(null);
+    setHasUnsavedChanges(false);
   };
 
   const addPlayer = () => {
@@ -623,6 +672,179 @@ export default function Home() {
   };
 
   // Modify your submitScores function to be async
+  // const submitScores = async () => {
+  //   if (!selectedWinner) {
+  //     setError("Please select a winner first!");
+  //     return;
+  //   }
+
+  //   if (isSubmitting) {
+  //     setError("Please wait until the scores are processed.");
+  //     return;
+  //   }
+
+  //   setIsSubmitting(true);
+
+  //   try {
+  //     const playersWithRoundPoints = players.map((player) => ({
+  //       ...player,
+  //       roundPoints: player.points,
+  //     }));
+
+  //     // Calculate total maal
+  //     const totalMaal = playersWithRoundPoints.reduce((sum, player) => {
+  //       return player.jokerSeen ? sum + player.points : sum;
+  //     }, 0);
+
+  //     const numPlayers = playersWithRoundPoints.length;
+
+  //     // Calculate points for non-winner players
+  //     let nonWinnerPoints = [];
+  //     playersWithRoundPoints.forEach((p) => {
+  //       if (p.id !== selectedWinner) {
+  //         let points;
+  //         if (!p.jokerSeen) {
+  //           points = -totalMaal - 10;
+  //         } else {
+  //           points = p.points * numPlayers - totalMaal - 3;
+  //         }
+  //         nonWinnerPoints.push(points);
+  //       }
+  //     });
+
+  //     // Winner's points
+  //     const winnerPoints = -nonWinnerPoints.reduce(
+  //       (sum, points) => sum + points,
+  //       0
+  //     );
+
+  //     // Create final updated players array
+  //     const updatedPlayers = playersWithRoundPoints.map((p) => {
+  //       if (p.id === selectedWinner) {
+  //         return {
+  //           ...p,
+  //           isWinner: true,
+  //           points: winnerPoints,
+  //         };
+  //       } else if (!p.jokerSeen) {
+  //         return {
+  //           ...p,
+  //           isWinner: false,
+  //           points: -totalMaal - 10,
+  //         };
+  //       } else {
+  //         return {
+  //           ...p,
+  //           isWinner: false,
+  //           points: p.points * numPlayers - totalMaal - 3,
+  //         };
+  //       }
+  //     });
+
+  //     const updatedGames = [
+  //       ...games,
+  //       {
+  //         gameNo: games.length + 1,
+  //         scores: updatedPlayers.reduce(
+  //           (acc, player) => ({
+  //             ...acc,
+  //             [player.id]: player.points,
+  //           }),
+  //           {}
+  //         ),
+  //         roundPoints: updatedPlayers.reduce(
+  //           (acc, player) => ({
+  //             ...acc,
+  //             [player.id]: player.roundPoints,
+  //           }),
+  //           {}
+  //         ),
+  //         winner: selectedWinner,
+  //       },
+  //     ];
+
+  //     // Update Supabase
+  //     if (gameId) {
+  //       try {
+  //         // Update the game in Supabase
+  //         const { error: supabaseError } = await supabase
+  //           .from("games")
+  //           .update({
+  //             players: updatedPlayers,
+  //             games: updatedGames,
+  //             last_update: new Date().toISOString(),
+  //           })
+  //           .eq("id", gameId);
+
+  //         if (supabaseError) {
+  //           console.error("Error updating game:", supabaseError);
+  //           setError("Failed to update game");
+  //           setIsSubmitting(false);
+  //           return;
+  //         }
+
+  //         // Also update the saved game in localStorage if this is a loaded game
+  //         const savedGames = JSON.parse(
+  //           localStorage.getItem("savedGames") || "[]"
+  //         );
+  //         const savedGameIndex = savedGames.findIndex(
+  //           (game) => game.supabaseId === gameId
+  //         );
+
+  //         if (savedGameIndex !== -1) {
+  //           // Calculate total points for each player
+  //           const playerTotals = {};
+  //           players.forEach((player) => {
+  //             playerTotals[player.id] = updatedGames.reduce(
+  //               (sum, game) => sum + (game.scores[player.id] || 0),
+  //               0
+  //             );
+  //           });
+
+  //           // Update the existing saved game
+  //           savedGames[savedGameIndex] = {
+  //             ...savedGames[savedGameIndex],
+  //             players: updatedPlayers,
+  //             games: updatedGames,
+  //             playerTotals,
+  //             last_update: new Date().toISOString(),
+  //           };
+
+  //           // Update localStorage
+  //           localStorage.setItem("savedGames", JSON.stringify(savedGames));
+  //           setSavedGamesMetadata(savedGames);
+  //         }
+  //       } catch (err) {
+  //         console.error("Error updating game:", err);
+  //         setError("Failed to update game");
+  //         setIsSubmitting(false);
+  //         return;
+  //       }
+  //     }
+
+  //     setGames(updatedGames);
+  //     localStorage.setItem("marriageGameHistory", JSON.stringify(updatedGames));
+
+  //     // Reset for next round
+  //     setPlayers(
+  //       updatedPlayers.map((player) => ({
+  //         ...player,
+  //         points: 0,
+  //         isWinner: false,
+  //         jokerSeen: false,
+  //         roundPoints: 0,
+  //       }))
+  //     );
+  //     setSelectedWinner(null);
+  //     setError("");
+  //   } catch (err) {
+  //     console.error("Error in submitScores:", err);
+  //     setError("An error occurred while submitting scores");
+  //   } finally {
+  //     setIsSubmitting(false);
+  //   }
+  // };
+
   const submitScores = async () => {
     if (!selectedWinner) {
       setError("Please select a winner first!");
@@ -637,19 +859,22 @@ export default function Home() {
     setIsSubmitting(true);
 
     try {
-      const playersWithRoundPoints = players.map((player) => ({
+      // Filter out held players from score calculation
+      const activePlayers = players.filter((p) => !heldPlayers.has(p.id));
+
+      const playersWithRoundPoints = activePlayers.map((player) => ({
         ...player,
         roundPoints: player.points,
       }));
 
-      // Calculate total maal
+      // Calculate total maal only for active players
       const totalMaal = playersWithRoundPoints.reduce((sum, player) => {
         return player.jokerSeen ? sum + player.points : sum;
       }, 0);
 
       const numPlayers = playersWithRoundPoints.length;
 
-      // Calculate points for non-winner players
+      // Calculate points for non-winner active players
       let nonWinnerPoints = [];
       playersWithRoundPoints.forEach((p) => {
         if (p.id !== selectedWinner) {
@@ -669,116 +894,44 @@ export default function Home() {
         0
       );
 
-      // Create final updated players array
-      const updatedPlayers = playersWithRoundPoints.map((p) => {
-        if (p.id === selectedWinner) {
-          return {
-            ...p,
-            isWinner: true,
-            points: winnerPoints,
-          };
-        } else if (!p.jokerSeen) {
-          return {
-            ...p,
-            isWinner: false,
-            points: -totalMaal - 10,
-          };
+      // Create scores object including held players (with 0 points)
+      const roundScores = players.reduce((acc, player) => {
+        if (heldPlayers.has(player.id)) {
+          acc[player.id] = 0;
+        } else if (player.id === selectedWinner) {
+          acc[player.id] = winnerPoints;
+        } else if (!player.jokerSeen) {
+          acc[player.id] = -totalMaal - 10;
         } else {
-          return {
-            ...p,
-            isWinner: false,
-            points: p.points * numPlayers - totalMaal - 3,
-          };
+          acc[player.id] = player.points * numPlayers - totalMaal - 3;
         }
-      });
+        return acc;
+      }, {});
+
+      const roundPointsObj = players.reduce((acc, player) => {
+        acc[player.id] = heldPlayers.has(player.id) ? 0 : player.roundPoints;
+        return acc;
+      }, {});
 
       const updatedGames = [
         ...games,
         {
           gameNo: games.length + 1,
-          scores: updatedPlayers.reduce(
-            (acc, player) => ({
-              ...acc,
-              [player.id]: player.points,
-            }),
-            {}
-          ),
-          roundPoints: updatedPlayers.reduce(
-            (acc, player) => ({
-              ...acc,
-              [player.id]: player.roundPoints,
-            }),
-            {}
-          ),
+          scores: roundScores,
+          roundPoints: roundPointsObj,
           winner: selectedWinner,
         },
       ];
 
-      // Update Supabase
-      if (gameId) {
-        try {
-          // Update the game in Supabase
-          const { error: supabaseError } = await supabase
-            .from("games")
-            .update({
-              players: updatedPlayers,
-              games: updatedGames,
-              last_update: new Date().toISOString(),
-            })
-            .eq("id", gameId);
-
-          if (supabaseError) {
-            console.error("Error updating game:", supabaseError);
-            setError("Failed to update game");
-            setIsSubmitting(false);
-            return;
-          }
-
-          // Also update the saved game in localStorage if this is a loaded game
-          const savedGames = JSON.parse(
-            localStorage.getItem("savedGames") || "[]"
-          );
-          const savedGameIndex = savedGames.findIndex(
-            (game) => game.supabaseId === gameId
-          );
-
-          if (savedGameIndex !== -1) {
-            // Calculate total points for each player
-            const playerTotals = {};
-            players.forEach((player) => {
-              playerTotals[player.id] = updatedGames.reduce(
-                (sum, game) => sum + (game.scores[player.id] || 0),
-                0
-              );
-            });
-
-            // Update the existing saved game
-            savedGames[savedGameIndex] = {
-              ...savedGames[savedGameIndex],
-              players: updatedPlayers,
-              games: updatedGames,
-              playerTotals,
-              last_update: new Date().toISOString(),
-            };
-
-            // Update localStorage
-            localStorage.setItem("savedGames", JSON.stringify(savedGames));
-            setSavedGamesMetadata(savedGames);
-          }
-        } catch (err) {
-          console.error("Error updating game:", err);
-          setError("Failed to update game");
-          setIsSubmitting(false);
-          return;
-        }
-      }
+      // Rest of your existing submitScores code...
 
       setGames(updatedGames);
       localStorage.setItem("marriageGameHistory", JSON.stringify(updatedGames));
+      setHasUnsavedChanges(true);
 
-      // Reset for next round
+      // Reset for next round, maintaining hold status
       setPlayers(
-        updatedPlayers.map((player) => ({
+        players.map((player) => ({
           ...player,
           points: 0,
           isWinner: false,
@@ -1079,7 +1232,7 @@ export default function Home() {
             )}
             <div className="space-y-2">
               <div className="flex flex-col gap-2 ">
-                {players.map((player) => (
+                {/* {players.map((player) => (
                   <div
                     key={player.id}
                     className={`p-2 md:px-3 md:pt-2 flex justify-between items-center md:rounded-xl md:border-1 md:shadow-md border-dotted `}
@@ -1173,6 +1326,111 @@ export default function Home() {
                       </button>
                     </div>
                   </div>
+                ))} */}
+                {players.map((player) => (
+                  <div
+                    key={player.id}
+                    className={`p-2 md:px-3 md:pt-2 flex justify-between items-center md:rounded-xl md:border-1 md:shadow-md border-dotted ${
+                      heldPlayers.has(player.id) ? "opacity-50 bg-gray-200" : ""
+                    }`}
+                  >
+                    <div
+                      className={`font-semibold py-[18px] text-neutral-100 flex-1 flex items-end text-sm overflow-x-hidden text-ellipsis ${
+                        selectedWinner === player.id
+                          ? "shadow-inner shadow-green-900 text-white"
+                          : ""
+                      }  p-2 w-[90px] max-w-[90px]`}
+                    >
+                      <User size={20} />
+                      <span className="">{player.name.toUpperCase()}</span>
+                    </div>
+
+                    <div className="flex gap-2 max-sm:w-30">
+                      {!heldPlayers.has(player.id) && player.jokerSeen && (
+                        <input
+                          id={`points-input-${player.id}`}
+                          type="number"
+                          inputMode="numeric"
+                          placeholder="0"
+                          pattern="[0-9]*"
+                          value={player.points === 0 ? "" : player.points}
+                          onChange={(e) => {
+                            const newPoints = parseInt(e.target.value) || 0;
+                            setPlayers(
+                              players.map((p) =>
+                                p.id === player.id
+                                  ? { ...p, points: newPoints }
+                                  : p
+                              )
+                            );
+                          }}
+                          className="w-12 text-xl text-center px-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-neutral-200 text-neutral-800 border-gray-200"
+                          aria-placeholder="enter points"
+                        />
+                      )}
+
+                      {!heldPlayers.has(player.id) && (
+                        <>
+                          <button
+                            onClick={() => handleJokerSeen(player.id)}
+                            className={`w-full px-2 py-2 text-sm font-medium transition-colors duration-300 ease-in-out flex items-center justify-center gap-2 ${
+                              darkMode
+                                ? player.jokerSeen
+                                  ? "bg-blue-600 text-white hover:bg-blue-700"
+                                  : "bg-red-900 bg-opacity-20 text-red-300 hover:bg-opacity-30"
+                                : player.jokerSeen
+                                ? "bg-blue-500 text-neutral-100 "
+                                : "text-blue-200 shadow-inner shadow-green-800"
+                            }`}
+                          >
+                            {player.jokerSeen ? (
+                              <div className="flex flex-col items-center">
+                                <Eye size={18} />
+                                Seen
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center">
+                                <EyeOff size={18} />
+                                <s>Seen</s>
+                              </div>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleWinnerSelect(player.id)}
+                            disabled={!player.jokerSeen}
+                            className={`w-[100px] px-3 py-2 text-sm font-medium transition-all duration-200 flex items-center justify-center gap-1 ${
+                              player.id === selectedWinner
+                                ? "bg-green-600 text-white shadow"
+                                : player.jokerSeen
+                                ? "bg-neutral-50 text-green-600"
+                                : "opacity-80 text-neutral-50 cursor-not-allowed shadow-inner shadow-green-800"
+                            }`}
+                          >
+                            {player.id === selectedWinner ? (
+                              <>
+                                <Trophy size={18} /> Winner
+                              </>
+                            ) : (
+                              <>
+                                <Trophy size={18} /> Select Winner
+                              </>
+                            )}
+                          </button>
+                        </>
+                      )}
+
+                      <button
+                        onClick={() => togglePlayerHold(player.id)}
+                        className={`px-3 py-2 text-sm font-medium transition-all duration-200 flex items-center justify-center ${
+                          heldPlayers.has(player.id)
+                            ? "bg-red-500 text-white"
+                            : "bg-gray-200 text-gray-700"
+                        }`}
+                      >
+                        {heldPlayers.has(player.id) ? "Resume" : "Hold"}
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -1187,6 +1445,12 @@ export default function Home() {
                 }`}
               >
                 {isSubmitting ? "Submitting..." : "Submit Scores"}
+              </button>
+              <button
+                onClick={() => setShowNewPlayerModal(true)}
+                className="px-4 py-2 bg-blue-600 text-white font-medium transition-colors duration-200 hover:bg-blue-700"
+              >
+                Add Player
               </button>
             </div>
             {games.length < 1 && (
@@ -1238,6 +1502,42 @@ export default function Home() {
                 </div>
               </div>
             )}
+            {showNewPlayerModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center p-4 z-50">
+                <div
+                  className={`bg-green-700 text-white p-6 max-w-md w-full ${
+                    darkMode ? "bg-gray-800" : ""
+                  }`}
+                >
+                  <h3 className="text-lg font-semibold mb-4">Add New Player</h3>
+                  <input
+                    type="text"
+                    value={newPlayerName}
+                    onChange={(e) => setNewPlayerName(e.target.value)}
+                    placeholder="Enter player name"
+                    className="w-full p-2 border mb-4 text-black tracking-wide"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => {
+                        setShowNewPlayerModal(false);
+                        setNewPlayerName("");
+                      }}
+                      className="px-4 py-2 bg-white text-red-500 font-semibold"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleAddNewPlayer}
+                      className="px-4 py-2 bg-white text-green-700 font-bold hover:bg-green-600"
+                    >
+                      Add Player
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {games.length > 0 && (
               <div
                 className={`mb-8 transition-colors duration-200 ${
