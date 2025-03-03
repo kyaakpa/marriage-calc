@@ -862,9 +862,10 @@ export default function Home() {
       // Filter out held players from score calculation
       const activePlayers = players.filter((p) => !heldPlayers.has(p.id));
 
+      // Create a copy of the players with their current points stored as roundPoints
       const playersWithRoundPoints = activePlayers.map((player) => ({
         ...player,
-        roundPoints: player.points,
+        roundPoints: player.points, // Store the current points as roundPoints
       }));
 
       // Calculate total maal only for active players
@@ -908,8 +909,10 @@ export default function Home() {
         return acc;
       }, {});
 
+      // Create roundPoints object - this captures the ORIGINAL points before calculation
       const roundPointsObj = players.reduce((acc, player) => {
-        acc[player.id] = heldPlayers.has(player.id) ? 0 : player.roundPoints;
+        // Store the original points entered by the user, not 0 for non-held players
+        acc[player.id] = heldPlayers.has(player.id) ? 0 : player.points;
         return acc;
       }, {});
 
@@ -923,7 +926,31 @@ export default function Home() {
         },
       ];
 
-      // Rest of your existing submitScores code...
+      // Update Supabase if gameId exists
+      if (gameId) {
+        try {
+          const { error: supabaseError } = await supabase
+            .from("games")
+            .update({
+              players: players,
+              games: updatedGames,
+              last_update: new Date().toISOString(),
+            })
+            .eq("id", gameId);
+
+          if (supabaseError) {
+            console.error("Error updating game:", supabaseError);
+            setError("Failed to update game");
+            setIsSubmitting(false);
+            return;
+          }
+        } catch (err) {
+          console.error("Error updating game:", err);
+          setError("Failed to update game");
+          setIsSubmitting(false);
+          return;
+        }
+      }
 
       setGames(updatedGames);
       localStorage.setItem("marriageGameHistory", JSON.stringify(updatedGames));
