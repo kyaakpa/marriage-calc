@@ -136,40 +136,41 @@ export default function Home() {
     }
   }, []);
 
-  useEffect(() => {
-    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
-      // Register service worker
-      navigator.serviceWorker
-        .register("/service-worker.js")
-        .then((registration) => {
-          // Check for updates
-          registration.addEventListener("updatefound", () => {
-            const newWorker = registration.installing;
-            newWorker.addEventListener("statechange", () => {
-              if (
-                newWorker.state === "installed" &&
-                navigator.serviceWorker.controller
-              ) {
-                // New version available
-                if (
-                  window.confirm("New version available! Reload to update?")
-                ) {
-                  window.location.reload();
-                }
-              }
-            });
-          });
-        })
-        .catch((error) => {
-          console.error("Service Worker registration failed:", error);
-        });
+  //service worker disabled
+  // useEffect(() => {
+  //   if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+  //     // Register service worker
+  //     navigator.serviceWorker
+  //       .register("/service-worker.js")
+  //       .then((registration) => {
+  //         // Check for updates
+  //         registration.addEventListener("updatefound", () => {
+  //           const newWorker = registration.installing;
+  //           newWorker.addEventListener("statechange", () => {
+  //             if (
+  //               newWorker.state === "installed" &&
+  //               navigator.serviceWorker.controller
+  //             ) {
+  //               // New version available
+  //               if (
+  //                 window.confirm("New version available! Reload to update?")
+  //               ) {
+  //                 window.location.reload();
+  //               }
+  //             }
+  //           });
+  //         });
+  //       })
+  //       .catch((error) => {
+  //         console.error("Service Worker registration failed:", error);
+  //       });
 
-      // Handle updates when the service worker is already active
-      navigator.serviceWorker.addEventListener("controllerchange", () => {
-        window.location.reload();
-      });
-    }
-  }, []);
+  //     // Handle updates when the service worker is already active
+  //     navigator.serviceWorker.addEventListener("controllerchange", () => {
+  //       window.location.reload();
+  //     });
+  //   }
+  // }, []);
 
   const toggleDarkMode = () => {
     const newMode = !darkMode;
