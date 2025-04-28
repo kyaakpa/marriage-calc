@@ -672,180 +672,6 @@ export default function Home() {
     setError("");
   };
 
-  // Modify your submitScores function to be async
-  // const submitScores = async () => {
-  //   if (!selectedWinner) {
-  //     setError("Please select a winner first!");
-  //     return;
-  //   }
-
-  //   if (isSubmitting) {
-  //     setError("Please wait until the scores are processed.");
-  //     return;
-  //   }
-
-  //   setIsSubmitting(true);
-
-  //   try {
-  //     const playersWithRoundPoints = players.map((player) => ({
-  //       ...player,
-  //       roundPoints: player.points,
-  //     }));
-
-  //     // Calculate total maal
-  //     const totalMaal = playersWithRoundPoints.reduce((sum, player) => {
-  //       return player.jokerSeen ? sum + player.points : sum;
-  //     }, 0);
-
-  //     const numPlayers = playersWithRoundPoints.length;
-
-  //     // Calculate points for non-winner players
-  //     let nonWinnerPoints = [];
-  //     playersWithRoundPoints.forEach((p) => {
-  //       if (p.id !== selectedWinner) {
-  //         let points;
-  //         if (!p.jokerSeen) {
-  //           points = -totalMaal - 10;
-  //         } else {
-  //           points = p.points * numPlayers - totalMaal - 3;
-  //         }
-  //         nonWinnerPoints.push(points);
-  //       }
-  //     });
-
-  //     // Winner's points
-  //     const winnerPoints = -nonWinnerPoints.reduce(
-  //       (sum, points) => sum + points,
-  //       0
-  //     );
-
-  //     // Create final updated players array
-  //     const updatedPlayers = playersWithRoundPoints.map((p) => {
-  //       if (p.id === selectedWinner) {
-  //         return {
-  //           ...p,
-  //           isWinner: true,
-  //           points: winnerPoints,
-  //         };
-  //       } else if (!p.jokerSeen) {
-  //         return {
-  //           ...p,
-  //           isWinner: false,
-  //           points: -totalMaal - 10,
-  //         };
-  //       } else {
-  //         return {
-  //           ...p,
-  //           isWinner: false,
-  //           points: p.points * numPlayers - totalMaal - 3,
-  //         };
-  //       }
-  //     });
-
-  //     const updatedGames = [
-  //       ...games,
-  //       {
-  //         gameNo: games.length + 1,
-  //         scores: updatedPlayers.reduce(
-  //           (acc, player) => ({
-  //             ...acc,
-  //             [player.id]: player.points,
-  //           }),
-  //           {}
-  //         ),
-  //         roundPoints: updatedPlayers.reduce(
-  //           (acc, player) => ({
-  //             ...acc,
-  //             [player.id]: player.roundPoints,
-  //           }),
-  //           {}
-  //         ),
-  //         winner: selectedWinner,
-  //       },
-  //     ];
-
-  //     // Update Supabase
-  //     if (gameId) {
-  //       try {
-  //         // Update the game in Supabase
-  //         const { error: supabaseError } = await supabase
-  //           .from("games")
-  //           .update({
-  //             players: updatedPlayers,
-  //             games: updatedGames,
-  //             last_update: new Date().toISOString(),
-  //           })
-  //           .eq("id", gameId);
-
-  //         if (supabaseError) {
-  //           console.error("Error updating game:", supabaseError);
-  //           setError("Failed to update game");
-  //           setIsSubmitting(false);
-  //           return;
-  //         }
-
-  //         // Also update the saved game in localStorage if this is a loaded game
-  //         const savedGames = JSON.parse(
-  //           localStorage.getItem("savedGames") || "[]"
-  //         );
-  //         const savedGameIndex = savedGames.findIndex(
-  //           (game) => game.supabaseId === gameId
-  //         );
-
-  //         if (savedGameIndex !== -1) {
-  //           // Calculate total points for each player
-  //           const playerTotals = {};
-  //           players.forEach((player) => {
-  //             playerTotals[player.id] = updatedGames.reduce(
-  //               (sum, game) => sum + (game.scores[player.id] || 0),
-  //               0
-  //             );
-  //           });
-
-  //           // Update the existing saved game
-  //           savedGames[savedGameIndex] = {
-  //             ...savedGames[savedGameIndex],
-  //             players: updatedPlayers,
-  //             games: updatedGames,
-  //             playerTotals,
-  //             last_update: new Date().toISOString(),
-  //           };
-
-  //           // Update localStorage
-  //           localStorage.setItem("savedGames", JSON.stringify(savedGames));
-  //           setSavedGamesMetadata(savedGames);
-  //         }
-  //       } catch (err) {
-  //         console.error("Error updating game:", err);
-  //         setError("Failed to update game");
-  //         setIsSubmitting(false);
-  //         return;
-  //       }
-  //     }
-
-  //     setGames(updatedGames);
-  //     localStorage.setItem("marriageGameHistory", JSON.stringify(updatedGames));
-
-  //     // Reset for next round
-  //     setPlayers(
-  //       updatedPlayers.map((player) => ({
-  //         ...player,
-  //         points: 0,
-  //         isWinner: false,
-  //         jokerSeen: false,
-  //         roundPoints: 0,
-  //       }))
-  //     );
-  //     setSelectedWinner(null);
-  //     setError("");
-  //   } catch (err) {
-  //     console.error("Error in submitScores:", err);
-  //     setError("An error occurred while submitting scores");
-  //   } finally {
-  //     setIsSubmitting(false);
-  //   }
-  // };
-
   const submitScores = async () => {
     if (!selectedWinner) {
       setError("Please select a winner first!");
@@ -1247,8 +1073,8 @@ export default function Home() {
             </div>
           </>
         ) : (
-          <div className="flex flex-col justify-between pb-16  lg:p-6 lg:shadow-sm bg-green-700">
-            {error && (
+          <div className="flex flex-col justify-between pb-16  lg:p-6 lg:shadow-sm bg-blue-50">
+            {/* {error && (
               <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg">
                 <div className="flex">
                   <div className="flex-shrink-0">⚠️</div>
@@ -1257,104 +1083,9 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-            )}
+            )} */}
             <div className="space-y-2">
-              <div className="flex flex-col gap-2 ">
-                {/* {players.map((player) => (
-                  <div
-                    key={player.id}
-                    className={`p-2 md:px-3 md:pt-2 flex justify-between items-center md:rounded-xl md:border-1 md:shadow-md border-dotted `}
-                  >
-                    <div
-                      className={`font-semibold py-[18px] text-neutral-100 flex-1 flex items-end text-sm overflow-x-hidden text-ellipsis ${
-                        selectedWinner === player.id
-                          ? "shadow-inner shadow-green-900 text-white"
-                          : ""
-                      }  p-2 w-[90px] max-w-[90px]`}
-                    >
-                      <User size={20} />
-
-                      <span className="">{player.name.toUpperCase()}</span>
-                    </div>
-
-                    <div className="flex gap-2 max-sm:w-30">
-                      {player.jokerSeen && (
-                        <>
-                          <input
-                            id={`points-input-${player.id}`}
-                            type="number"
-                            inputMode="numeric"
-                            placeholder="0"
-                            pattern="[0-9]*"
-                            value={player.points === 0 ? "" : player.points}
-                            onChange={(e) => {
-                              const newPoints = parseInt(e.target.value) || 0;
-                              setPlayers(
-                                players.map((p) =>
-                                  p.id === player.id
-                                    ? { ...p, points: newPoints }
-                                    : p
-                                )
-                              );
-                            }}
-                            className={`w-12 text-xl text-center px-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-neutral-200 text-neutral-800 border-gray-200"
-                        `}
-                            aria-placeholder="enter points"
-                          />
-                        </>
-                      )}
-                      <button
-                        onClick={() => handleJokerSeen(player.id)}
-                        className={`w-full px-2 py-2 text-sm font-medium transition-colors duration-300 ease-in-out flex items-center justify-center gap-2 ${
-                          darkMode
-                            ? player.jokerSeen
-                              ? "bg-blue-600 text-white hover:bg-blue-700"
-                              : "bg-red-900 bg-opacity-20 text-red-300 hover:bg-opacity-30"
-                            : player.jokerSeen
-                            ? "bg-blue-500 text-neutral-100 "
-                            : "text-blue-200 shadow-inner shadow-green-800"
-                        }`}
-                      >
-                        {player.jokerSeen ? (
-                          <>
-                            <div className="flex flex-col items-center">
-                              <Eye size={18} />
-                              Seen
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="flex flex-col items-center">
-                              <EyeOff size={18} />
-                              <s>Seen</s>
-                            </div>
-                          </>
-                        )}
-                      </button>
-                      <button
-                        onClick={() => handleWinnerSelect(player.id)}
-                        disabled={!player.jokerSeen}
-                        className={`w-[100px] px-3 py-2  text-sm font-medium transition-all duration-200 flex items-center justify-center gap-1 ${
-                          player.id === selectedWinner
-                            ? "bg-green-600 text-white shadow"
-                            : player.jokerSeen
-                            ? "bg-neutral-50 text-green-600"
-                            : " opacity-80 text-neutral-50 cursor-not-allowed shadow-inner shadow-green-800"
-                        }`}
-                      >
-                        {player.id === selectedWinner ? (
-                          <>
-                            <Trophy size={18} /> Winner
-                          </>
-                        ) : (
-                          <>
-                            <Trophy size={18} /> Select Winner
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                ))} */}
+              <div className="flex flex-col gap-2">
                 {players.map((player) => (
                   <div
                     key={player.id}
@@ -1363,13 +1094,11 @@ export default function Home() {
                     }`}
                   >
                     <div
-                      className={`font-semibold py-[18px] text-neutral-100 flex-1 flex items-end text-sm overflow-x-hidden text-ellipsis ${
-                        selectedWinner === player.id
-                          ? "shadow-inner shadow-green-900 text-white"
-                          : ""
+                      className={`font-semibold py-[18px] flex-1 flex items-end text-sm overflow-x-hidden text-ellipsis ${
+                        selectedWinner === player.id ? "" : "text-black"
                       }  p-2 w-[90px] max-w-[90px]`}
                     >
-                      <User size={20} />
+                      {/* <User size={20} /> */}
                       <span className="">{player.name.toUpperCase()}</span>
                     </div>
 
@@ -1392,7 +1121,7 @@ export default function Home() {
                               )
                             );
                           }}
-                          className="w-12 text-xl text-center px-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-neutral-200 text-neutral-800 border-gray-200"
+                          className="w-12 text-xl rounded-lg text-center px-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white text-neutral-800 border-gray-200"
                           aria-placeholder="enter points"
                         />
                       )}
@@ -1401,14 +1130,14 @@ export default function Home() {
                         <>
                           <button
                             onClick={() => handleJokerSeen(player.id)}
-                            className={`w-full px-2 py-2 text-sm font-medium transition-colors duration-300 ease-in-out flex items-center justify-center gap-2 ${
+                            className={`w-full px-2 py-2 text-sm font-medium transition-colors duration-300 ease-in-out flex items-center justify-center gap-2 rounded-lg ${
                               darkMode
                                 ? player.jokerSeen
                                   ? "bg-blue-600 text-white hover:bg-blue-700"
                                   : "bg-red-900 bg-opacity-20 text-red-300 hover:bg-opacity-30"
                                 : player.jokerSeen
-                                ? "bg-blue-500 text-neutral-100 "
-                                : "text-blue-200 shadow-inner shadow-green-800"
+                                ? "bg-blue-500 text-neutral-50"
+                                : "bg-red-600 text-neutral-50"
                             }`}
                           >
                             {player.jokerSeen ? (
@@ -1426,12 +1155,12 @@ export default function Home() {
                           <button
                             onClick={() => handleWinnerSelect(player.id)}
                             disabled={!player.jokerSeen}
-                            className={`w-[100px] px-3 py-2 text-sm font-medium transition-all duration-200 flex items-center justify-center gap-1 ${
+                            className={`w-[100px] px-3 py-2 text-sm font-medium transition-all duration-200 flex items-center justify-center rounded-lg gap-1 ${
                               player.id === selectedWinner
-                                ? "bg-green-600 text-white shadow"
+                                ? "bg-green-600 text-neutral-50"
                                 : player.jokerSeen
-                                ? "bg-neutral-50 text-green-600"
-                                : "opacity-80 text-neutral-50 cursor-not-allowed shadow-inner shadow-green-800"
+                                ? "bg-red-600 text-neutral-50"
+                                : "opacity-80 cursor-not-allowed bg-red-600 text-neutral-50"
                             }`}
                           >
                             {player.id === selectedWinner ? (
@@ -1449,10 +1178,10 @@ export default function Home() {
 
                       <button
                         onClick={() => togglePlayerHold(player.id)}
-                        className={`px-3 py-2 text-sm font-medium transition-all duration-200 flex items-center justify-center ${
+                        className={`px-3 py-2 text-sm font-medium transition-all duration-200 flex items-center justify-center rounded-lg ${
                           heldPlayers.has(player.id)
-                            ? "bg-red-500 text-white"
-                            : "bg-gray-200 text-gray-700"
+                            ? "bg-neutral-400"
+                            : "bg-red-600 text-red-50"
                         }`}
                       >
                         {heldPlayers.has(player.id) ? "Resume" : "Hold"}
@@ -1462,23 +1191,23 @@ export default function Home() {
                 ))}
               </div>
             </div>
-            <div className="flex justify-center gap-4 py-4">
+            <div className="flex justify-end gap-4 py-4 px-2">
+              <button
+                onClick={() => setShowNewPlayerModal(true)}
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium transition-colors duration-200 hover:bg-blue-700"
+              >
+                Add Player
+              </button>
               <button
                 onClick={submitScores}
                 disabled={isSubmitting || !selectedWinner}
-                className={`px-4 py-2 text-white font-medium transition-colors duration-200 ${
+                className={`px-4 py-2 text-white font-medium transition-colors rounded-lg duration-200 ${
                   isSubmitting || !selectedWinner
                     ? "bg-green-700 opacity-60 cursor-not-allowed shadow-inner shadow-green-800"
-                    : "bg-green-600"
+                    : "bg-green-700"
                 }`}
               >
                 {isSubmitting ? "Submitting..." : "Submit Scores"}
-              </button>
-              <button
-                onClick={() => setShowNewPlayerModal(true)}
-                className="px-4 py-2 bg-blue-600 text-white font-medium transition-colors duration-200 hover:bg-blue-700"
-              >
-                Add Player
               </button>
             </div>
             {games.length < 1 && (
